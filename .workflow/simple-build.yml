@@ -1,0 +1,35 @@
+# AutoDoor OCR 识别系统 - 简化版流水线配置
+# 使用 Gitee 流水线 v1.0 语法
+
+version: '1.0'
+name: autodoor-simple-build
+name-cn: AutoDoor 简化版构建流水线
+displayName: AutoDoor 简化版构建流水线
+description: 自动构建 Windows 版本的 AutoDoor 程序
+
+stages:
+  - stage:
+    name: build_windows
+    name-cn: Windows 构建
+    displayName: Windows 构建
+    steps:
+      - step: run@command
+        name: build_windows
+        displayName: 构建 Windows 版本
+        runInContainer: false
+        shell: cmd
+        commands:
+          - echo 开始构建 Windows 版本...
+          - python --version
+          - pip install -r requirements.txt
+          - pip install pyinstaller
+          - pyinstaller autodoor.spec --noconfirm
+          - echo Windows 版本构建完成
+        artifacts:
+          - name: autodoor-windows
+            path: dist/autodoor/
+            expireIn: 30d
+
+triggers:
+  manual:
+    enabled: true
