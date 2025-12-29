@@ -168,7 +168,7 @@ python autodoor.py
 ### Windows平台打包
 使用批处理脚本进行打包：
 ```cmd
-.uild_windows.bat
+./build_windows.bat
 ```
 
 ### macOS平台打包
