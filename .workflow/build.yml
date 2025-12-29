@@ -3,8 +3,8 @@
 
 version: '1.0'
 name: autodoor-build
-name-cn: AutoDoor 构建流水线
-displayName: AutoDoor 构建流水线
+name-cn: AutoDoor
+displayName: AutoDoor
 description: 自动构建 Windows 和 macOS 版本的 AutoDoor 程序
 
 stages:
@@ -16,6 +16,8 @@ stages:
       - step: run@command
         name: build_windows
         displayName: 构建 Windows 版本
+        runInContainer: false
+        shell: cmd
         commands:
           - echo 开始构建 Windows 版本...
           - python --version
@@ -36,6 +38,8 @@ stages:
       - step: run@command
         name: build_macos
         displayName: 构建 macOS 版本
+        runInContainer: false
+        shell: bash
         commands:
           - echo 开始构建 macOS 版本...
           - python3 --version
