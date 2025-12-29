@@ -116,6 +116,6 @@ jobs:
           - macOS版本：autodoor-macos-${{ steps.get_version.outputs.VERSION }}.zip
         draft: false
         prerelease: false
-        files:
-          - autodoor-windows-${{ steps.get_version.outputs.VERSION }}.zip
-          - autodoor-macos-${{ steps.get_version.outputs.VERSION }}.zip
+        files: |
+          autodoor-windows-${{ steps.get_version.outputs.VERSION }}.zip
+          autodoor-macos-${{ steps.get_version.outputs.VERSION }}.zip
