@@ -1,7 +1,7 @@
 # GitHub Actions 配置文件
 # 实现 Windows 和 macOS 版本的自动构建
 
-name: AutoDoor Build
+name: AutoDoor Build and Release
 
 on:
   push:
@@ -9,6 +9,11 @@ on:
   pull_request:
     branches: [ master ]
   workflow_dispatch:  # 允许手动触发构建
+    inputs:
+      release_type:
+        description: 'Release type (major/minor/patch)'
+        required: false
+        default: 'patch'
 
 jobs:
   build-windows:
@@ -62,3 +67,73 @@ jobs:
         name: autodoor-macos
         path: dist/autodoor/
         retention-days: 30
+
+  deploy:
+    name: Deploy to GitHub Releases
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-macos]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Get current version
+      id: get_version
+      run: |
+        # 获取当前版本号（从标签中提取）
+        VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+        echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+    
+    - name: Download Windows build
+      uses: actions/download-artifact@v4
+      with:
+        name: autodoor-windows
+        path: windows-build
+    
+    - name: Download macOS build
+      uses: actions/download-artifact@v4
+      with:
+        name: autodoor-macos
+        path: macos-build
+    
+    - name: Create zip archives
+      run: |
+        # 创建Windows和macOS的zip包
+        zip -r autodoor-windows-${{ steps.get_version.outputs.VERSION }}.zip windows-build/
+        zip -r autodoor-macos-${{ steps.get_version.outputs.VERSION }}.zip macos-build/
+    
+    - name: Create or update release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.get_version.outputs.VERSION }}
+        release_name: Release ${{ steps.get_version.outputs.VERSION }}
+        body: |
+          AutoDoor OCR 识别系统自动构建版本
+          - Windows版本：autodoor-windows-${{ steps.get_version.outputs.VERSION }}.zip
+          - macOS版本：autodoor-macos-${{ steps.get_version.outputs.VERSION }}.zip
+        draft: false
+        prerelease: false
+    
+    - name: Upload Windows release asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./autodoor-windows-${{ steps.get_version.outputs.VERSION }}.zip
+        asset_name: autodoor-windows-${{ steps.get_version.outputs.VERSION }}.zip
+        asset_content_type: application/zip
+    
+    - name: Upload macOS release asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./autodoor-macos-${{ steps.get_version.outputs.VERSION }}.zip
+        asset_name: autodoor-macos-${{ steps.get_version.outputs.VERSION }}.zip
+        asset_content_type: application/zip
