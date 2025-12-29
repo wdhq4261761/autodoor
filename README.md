@@ -2,6 +2,8 @@
 
 一个自动化的OCR文字识别系统，用于监控屏幕特定区域并执行相应操作。
 
+使用视频教程：https://www.bilibili.com/video/BV19TvxBjEBN/?share_source=copy_web&vd_source=5e145ac8326e3eeaa8a43c98ce362512
+
 ## 功能特性
 
 - ✅ 直观的屏幕区域选择GUI
