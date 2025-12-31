@@ -89,17 +89,20 @@ jobs:
       id: get_version
       run: |
         # 获取当前版本号（从标签中提取）
-        # 先检查是否有autodoor_V*格式的标签
-        VERSION=$(git tag -l "autodoor_V*" | sort -V | tail -n 1 2>/dev/null || echo "")
+        # 列出所有标签并排序，选择最新版本
+        ALL_TAGS=$(git tag -l | sort -V)
+        echo "所有标签：$ALL_TAGS"
         
-        # 如果没有autodoor_V*标签，使用git describe获取最近的标签
+        # 优先选择v*格式的标签，然后选择autodoor_V*格式的标签
+        VERSION=$(echo "$ALL_TAGS" | grep -E "^v[0-9]+" | tail -n 1 || echo "")
+        
+        # 如果没有v*标签，检查autodoor_V*标签
         if [[ -z "$VERSION" ]]; then
-          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-        fi
-        
-        # 转换autodoor_V*格式为v*格式
-        if [[ "$VERSION" == autodoor_V* ]]; then
-          VERSION="v${VERSION#autodoor_V}"
+          VERSION=$(echo "$ALL_TAGS" | grep -E "^autodoor_V" | tail -n 1 || echo "v0.0.0")
+          # 转换autodoor_V*格式为v*格式
+          if [[ "$VERSION" == autodoor_V* ]]; then
+            VERSION="v${VERSION#autodoor_V}"
+          fi
         fi
         
         # 确保版本号以v开头
@@ -107,6 +110,7 @@ jobs:
           VERSION="v${VERSION}"
         fi
         
+        echo "最终版本号：$VERSION"
         echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
     
     - name: Download Windows build
