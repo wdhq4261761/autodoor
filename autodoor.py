@@ -156,9 +156,17 @@ class AutoDoorOCR:
             self.log_message(f"Tesseract路径不是文件: {self.tesseract_path}")
             return False
         
-        if not self.tesseract_path.endswith("tesseract.exe"):
-            self.log_message(f"Tesseract路径不是可执行文件: {self.tesseract_path}")
-            return False
+        import platform
+        # 根据操作系统检查可执行文件格式
+        if platform.system() == "Windows":
+            if not self.tesseract_path.endswith("tesseract.exe"):
+                self.log_message(f"Tesseract路径不是可执行文件: {self.tesseract_path}")
+                return False
+        elif platform.system() == "Darwin":  # macOS
+            if not os.path.basename(self.tesseract_path) == "tesseract":
+                self.log_message(f"Tesseract路径不是可执行文件: {self.tesseract_path}")
+                return False
+        # 其他平台不做严格检查
         
         try:
             # 2. 版本兼容性检查
@@ -1002,9 +1010,16 @@ class AutoDoorOCR:
             messagebox.showwarning("警告", "指定的路径不存在！")
             return
         
-        if not new_path.endswith("tesseract.exe"):
-            messagebox.showwarning("警告", "请指定tesseract.exe可执行文件！")
-            return
+        import platform
+        # 根据操作系统检查可执行文件格式
+        if platform.system() == "Windows":
+            if not new_path.endswith("tesseract.exe"):
+                messagebox.showwarning("警告", "请指定tesseract.exe可执行文件！")
+                return
+        elif platform.system() == "Darwin":  # macOS
+            if not os.path.basename(new_path) == "tesseract":
+                messagebox.showwarning("警告", "请指定tesseract可执行文件！")
+                return
         
         try:
             # 测试新路径是否可用

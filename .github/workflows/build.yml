@@ -66,7 +66,10 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: autodoor-macos
-        path: dist/autodoor/
+        # 修正路径：macOS下使用BUNDLE会生成.app包
+        path: |
+          dist/AutoDoor.app/
+          dist/autodoor/
         retention-days: 30
 
   deploy:
@@ -129,6 +132,7 @@ jobs:
       run: |
         # 创建Windows和macOS的zip包
         zip -r autodoor-windows-${{ steps.get_version.outputs.VERSION }}.zip windows-build/
+        # 对于macOS，确保包含.app包和可执行文件
         zip -r autodoor-macos-${{ steps.get_version.outputs.VERSION }}.zip macos-build/
     
     - name: Create Release and upload assets

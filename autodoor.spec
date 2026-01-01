@@ -100,13 +100,36 @@ exe = EXE(
     entitlements_file=None,
     icon='',  # 如果有图标文件，可以在这里设置
 )
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='autodoor',
-)
+
+import platform
+if platform.system() == 'Darwin':
+    # macOS平台：创建.app应用程序包
+    app = BUNDLE(
+        exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        name='AutoDoor.app',
+        icon='',  # 如果有图标文件，可以在这里设置
+        bundle_identifier=None,
+        info_plist={
+            'CFBundleName': 'AutoDoor',
+            'CFBundleDisplayName': 'AutoDoor OCR',
+            'CFBundleIdentifier': 'com.autodoor.ocr',
+            'CFBundleVersion': '1.0',
+            'CFBundleShortVersionString': '1.0',
+            'NSHighResolutionCapable': True,
+        },
+    )
+else:
+    # Windows/Linux平台：使用COLLECT创建目录结构
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        name='autodoor',
+    )

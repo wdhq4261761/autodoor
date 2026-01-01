@@ -1,14 +1,14 @@
 {
   "version": "1.0.1",
-  "last_save_time": "2025-12-31T19:08:44.150597",
+  "last_save_time": "2026-01-01T02:06:19.959953",
   "ocr": {
     "interval": 5,
     "pause_duration": 180,
     "selected_region": [
-      15,
-      1217,
-      564,
-      1261
+      -1920,
+      1249,
+      -1577,
+      1279
     ],
     "custom_key": "o",
     "custom_keywords": [
@@ -33,9 +33,9 @@
         "key": "home"
       },
       {
-        "enabled": false,
-        "interval": 5,
-        "key": "tab"
+        "enabled": true,
+        "interval": 600,
+        "key": "x"
       },
       {
         "enabled": false,
@@ -49,13 +49,13 @@
       {
         "enabled": true,
         "region": [
-          621,
-          1325,
-          734,
-          1352
+          -1463,
+          1349,
+          -1358,
+          1367
         ],
-        "threshold": 800,
-        "key": "test_number_key"
+        "threshold": 5000,
+        "key": "x"
       },
       {
         "enabled": false,
