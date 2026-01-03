@@ -126,12 +126,23 @@ class AutoDoorOCR:
             app_root = os.path.dirname(os.path.abspath(__file__))
         
         # 根据操作系统选择不同的tesseract路径
+        tesseract_path = ""
         if platform.system() == "Windows":
             # Windows平台
             tesseract_path = os.path.join(app_root, "tesseract", "tesseract.exe")
         elif platform.system() == "Darwin":
             # macOS平台
-            tesseract_path = os.path.join(app_root, "tesseract", "tesseract")
+            # 检查可能的路径
+            possible_paths = [
+                os.path.join(app_root, "tesseract", "tesseract"),  # 主要路径
+                os.path.join(app_root, "tesseract"),  # 备选路径
+                os.path.join(os.path.dirname(app_root), "tesseract", "tesseract")  # 应用包外部路径
+            ]
+            
+            for path in possible_paths:
+                if os.path.exists(path):
+                    tesseract_path = path
+                    break
         else:
             # 其他平台，返回空
             tesseract_path = ""
@@ -157,7 +168,7 @@ class AutoDoorOCR:
             return False
         
         import platform
-        # 根据操作系统检查可执行文件格式
+        # 根据操作系统检查可执行文件格式和权限
         if platform.system() == "Windows":
             if not self.tesseract_path.endswith("tesseract.exe"):
                 self.log_message(f"Tesseract路径不是可执行文件: {self.tesseract_path}")
@@ -166,6 +177,19 @@ class AutoDoorOCR:
             if not os.path.basename(self.tesseract_path) == "tesseract":
                 self.log_message(f"Tesseract路径不是可执行文件: {self.tesseract_path}")
                 return False
+            
+            # 检查并修复macOS上的执行权限
+            if not os.access(self.tesseract_path, os.X_OK):
+                self.log_message(f"Tesseract文件缺少执行权限，尝试修复: {self.tesseract_path}")
+                try:
+                    # 尝试添加执行权限
+                    import subprocess
+                    subprocess.run(["chmod", "+x", self.tesseract_path], 
+                                  capture_output=True, check=True, timeout=5)
+                    self.log_message("成功添加执行权限")
+                except Exception as e:
+                    self.log_message(f"添加执行权限失败: {str(e)}")
+                    return False
         # 其他平台不做严格检查
         
         try:

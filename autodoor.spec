@@ -12,9 +12,16 @@ tesseract_files = []
 tesseract_dir = os.path.join(project_root, 'tesseract')
 if os.path.exists(tesseract_dir):
     for root, _, files in os.walk(tesseract_dir):
-        # 排除训练工具（.exe文件，除了tesseract.exe）和文档
+        # 排除训练工具和文档
+        # 对于Windows，保留tesseract.exe，排除其他.exe文件
+        # 对于macOS/Linux，保留tesseract可执行文件
         for file in files:
-            if file.endswith('.exe') and file != 'tesseract.exe':
+            # 保留主要的tesseract可执行文件，无论平台
+            if (file == 'tesseract' or file == 'tesseract.exe'):
+                tesseract_files.append((os.path.join(root, file), dest_dir))
+                continue
+            # 排除其他.exe文件（Windows训练工具）
+            if file.endswith('.exe'):
                 continue
             # 排除HTML文档
             if file.endswith('.html'):
