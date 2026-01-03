@@ -8,7 +8,9 @@ import time
 import datetime
 import subprocess
 import os
+import sys
 import json
+import platform
 from collections import deque
 
 # 尝试导入screeninfo库，如果不可用则提供安装提示
@@ -114,8 +116,6 @@ class AutoDoorOCR:
         """获取默认的Tesseract路径，使用项目自带的tesseract
         支持Windows和Mac平台，同时支持打包后的环境
         """
-        import platform
-        import sys
         
         # 获取程序运行目录
         if hasattr(sys, '_MEIPASS'):
@@ -167,7 +167,6 @@ class AutoDoorOCR:
             self.log_message(f"Tesseract路径不是文件: {self.tesseract_path}")
             return False
         
-        import platform
         # 根据操作系统检查可执行文件格式和权限
         if platform.system() == "Windows":
             if not self.tesseract_path.endswith("tesseract.exe"):
@@ -183,7 +182,6 @@ class AutoDoorOCR:
                 self.log_message(f"Tesseract文件缺少执行权限，尝试修复: {self.tesseract_path}")
                 try:
                     # 尝试添加执行权限
-                    import subprocess
                     subprocess.run(["chmod", "+x", self.tesseract_path], 
                                   capture_output=True, check=True, timeout=5)
                     self.log_message("成功添加执行权限")
@@ -1034,7 +1032,6 @@ class AutoDoorOCR:
             messagebox.showwarning("警告", "指定的路径不存在！")
             return
         
-        import platform
         # 根据操作系统检查可执行文件格式
         if platform.system() == "Windows":
             if not new_path.endswith("tesseract.exe"):
