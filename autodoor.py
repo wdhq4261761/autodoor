@@ -318,6 +318,26 @@ class AutoDoorOCR:
         # 退出按钮在右侧
         exit_btn = ttk.Button(control_frame, text="退出程序", command=self.exit_program)
         exit_btn.pack(side=tk.RIGHT)
+        
+        # 底部声明区域（与退出按钮同行）
+        footer_frame = ttk.Frame(control_frame)
+        footer_frame.pack(side=tk.LEFT, padx=(0, 20), anchor=tk.W)
+        
+        # 禁止商用声明
+        footer_label = ttk.Label(footer_frame, text="本程序仅供个人学习研究使用，禁止商用 | 制作人：", 
+                                  font=("Arial", 10), foreground="#888888", cursor="arrow")
+        footer_label.pack(side=tk.LEFT)
+        
+        # 制作人Bilibili超链接（使用Label模拟链接样式）
+        author_label = ttk.Label(footer_frame, text="Flown王砖家", 
+                                  font=("Arial", 10, "underline"), foreground="blue", cursor="hand2")
+        author_label.pack(side=tk.LEFT)
+        author_label.bind("<Button-1>", lambda e: self.open_bilibili())
+    
+    def open_bilibili(self):
+        """打开Bilibili主页"""
+        import webbrowser
+        webbrowser.open("https://space.bilibili.com/263150759")
     
     def create_ocr_tab(self, parent):
         """创建文字识别标签页"""
