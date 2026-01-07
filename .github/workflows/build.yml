@@ -88,33 +88,48 @@ jobs:
     - name: Install zip command
       run: sudo apt-get update && sudo apt-get install -y zip
     
-    - name: Get current version
+    - name: Get current version from autodoor.py
       id: get_version
       run: |
-        # 获取当前版本号（从标签中提取）
-        # 列出所有标签并排序，选择最新版本
-        ALL_TAGS=$(git tag -l | sort -V)
-        echo "所有标签：$ALL_TAGS"
+        # 从autodoor.py中提取版本号
+        VERSION=$(grep -oP 'VERSION\s*=\s*"\K[0-9]+\.[0-9]+\.[0-9]+' autodoor.py | tail -n 1 || echo "")
         
-        # 优先选择v*格式的标签，然后选择autodoor_V*格式的标签
-        VERSION=$(echo "$ALL_TAGS" | grep -E "^v[0-9]+" | tail -n 1 || echo "")
-        
-        # 如果没有v*标签，检查autodoor_V*标签
         if [[ -z "$VERSION" ]]; then
-          VERSION=$(echo "$ALL_TAGS" | grep -E "^autodoor_V" | tail -n 1 || echo "v0.0.0")
-          # 转换autodoor_V*格式为v*格式
-          if [[ "$VERSION" == autodoor_V* ]]; then
-            VERSION="v${VERSION#autodoor_V}"
-          fi
+          # 如果无法提取，使用标签中的版本号
+          VERSION=$(git tag -l "v*" | sort -V | tail -n 1 | sed 's/^v//' || echo "0.0.0")
         fi
         
-        # 确保版本号以v开头
-        if [[ "$VERSION" != v* ]]; then
-          VERSION="v${VERSION}"
-        fi
-        
-        echo "最终版本号：$VERSION"
         echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+        echo "_TAG=v${VERSION}" >> $GITHUB_OUTPUT
+        echo "_autodoor_TAG=autodoor_V${VERSION}" >> $GITHUB_OUTPUT
+    
+    - name: Check if need to create tag
+      id: check_tag
+      run: |
+        CURRENT_TAG="v${{ steps.get_version.outputs.VERSION }}"
+        AUTODOOR_TAG="${{ steps.get_version.outputs._autodoor_TAG }}"
+        
+        echo "当前版本：$CURRENT_TAG"
+        
+        # 检查标签是否存在
+        TAG_EXISTS=$(git tag -l "$CURRENT_TAG" | wc -l)
+        
+        if [[ "$TAG_EXISTS" == "0" ]]; then
+          echo "标签不存在，需要创建"
+          echo "CREATE_TAG=true" >> $GITHUB_OUTPUT
+          echo "创建的标签：$AUTODOOR_TAG"
+        else
+          echo "标签已存在，跳过创建"
+          echo "CREATE_TAG=false" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Create tag if needed
+      if: steps.check_tag.outputs.CREATE_TAG == 'true'
+      run: |
+        TAG_NAME="${{ steps.get_version.outputs._autodoor_TAG }}"
+        git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
+        git push origin "$TAG_NAME"
+        echo "已创建并推送标签：$TAG_NAME"
     
     - name: Download Windows build
       uses: actions/download-artifact@v4

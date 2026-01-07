@@ -14,6 +14,9 @@ import json
 import platform
 from collections import deque
 
+# 全局版本号配置
+VERSION = "1.1.0"
+
 # 尝试导入screeninfo库，如果不可用则提供安装提示
 try:
     import screeninfo
@@ -23,7 +26,7 @@ except ImportError:
 class AutoDoorOCR:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("AutoDoor OCR 识别系统")
+        self.root.title(f"AutoDoor OCR 识别系统 v{VERSION}")
         self.root.geometry("800x700") 
         self.root.resizable(True, True) 
         self.root.minsize(750, 650)
