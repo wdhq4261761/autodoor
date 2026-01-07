@@ -126,6 +126,10 @@ jobs:
     - name: Create tag if needed
       if: steps.check_tag.outputs.CREATE_TAG == 'true'
       run: |
+        # 配置Git用户信息（必须否则无法创建标签）
+        git config --global user.email "61274520+wdhq4261761@users.noreply.github.com"
+        git config --global user.name "wdhq4261761"
+        
         TAG_NAME="${{ steps.get_version.outputs._autodoor_TAG }}"
         git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
         git push origin "$TAG_NAME"
