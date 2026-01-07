@@ -16,9 +16,12 @@ if os.path.exists(tesseract_dir):
         # 对于Windows，保留tesseract.exe，排除其他.exe文件
         # 对于macOS/Linux，保留tesseract可执行文件
         for file in files:
+            file_path = os.path.join(root, file)
+            dest_dir = os.path.join('tesseract', os.path.relpath(root, tesseract_dir))
+            
             # 保留主要的tesseract可执行文件，无论平台
             if (file == 'tesseract' or file == 'tesseract.exe'):
-                tesseract_files.append((os.path.join(root, file), dest_dir))
+                tesseract_files.append((file_path, dest_dir))
                 continue
             # 排除其他.exe文件（Windows训练工具）
             if file.endswith('.exe'):
@@ -29,8 +32,7 @@ if os.path.exists(tesseract_dir):
             # 排除不必要的配置文件
             if root.endswith('tessdata/configs') or root.endswith('tessdata/tessconfigs'):
                 continue
-            file_path = os.path.join(root, file)
-            dest_dir = os.path.join('tesseract', os.path.relpath(root, tesseract_dir))
+            
             tesseract_files.append((file_path, dest_dir))
 
 # 配置文件

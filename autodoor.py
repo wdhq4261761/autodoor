@@ -5,6 +5,7 @@ import pytesseract
 from PIL import Image, ImageGrab
 import threading
 import time
+import random
 import datetime
 import subprocess
 import os
@@ -1480,8 +1481,19 @@ class AutoDoorOCR:
         if event_type == 'keypress':
             key = data
             try:
-                pyautogui.press(key)
-                self.log_message(f"按下了 {key} 键")
+                # 立即按下按键
+                pyautogui.keyDown(key)
+                
+                # 生成300-500毫秒的随机延迟
+                delay = random.randint(300, 500) / 1000  # 转换为秒
+                
+                # 延迟等待（不会影响UI主线程，因为事件处理在单独线程中）
+                time.sleep(delay)
+                
+                # 延迟后弹起按键
+                pyautogui.keyUp(key)
+                
+                self.log_message(f"按下了 {key} 键，延迟 {delay*1000:.0f} 毫秒")
             except Exception as e:
                 self.log_message(f"按键执行错误: {str(e)}")
         # 其他事件类型...
