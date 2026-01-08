@@ -1,21 +1,23 @@
 {
   "version": "1.0.1",
-  "last_save_time": "2026-01-01T02:06:19.959953",
+  "last_save_time": "2026-01-08T22:45:01.143507",
   "ocr": {
     "interval": 5,
     "pause_duration": 180,
     "selected_region": [
-      -1920,
-      1249,
-      -1577,
-      1279
+      -1763,
+      1289,
+      -1368,
+      1335
     ],
     "custom_key": "o",
     "custom_keywords": [
       "door",
       "men"
     ],
-    "language": "eng"
+    "language": "eng",
+    "delay_min": 1000,
+    "delay_max": 2000
   },
   "tesseract": {
     "path": "E:\\tesseract\\tesseract.exe"
@@ -28,19 +30,25 @@
   "timed_key_press": {
     "groups": [
       {
-        "enabled": true,
+        "enabled": false,
         "interval": 440,
-        "key": "home"
-      },
-      {
-        "enabled": true,
-        "interval": 600,
-        "key": "x"
+        "key": "home",
+        "delay_min": 300,
+        "delay_max": 500
       },
       {
         "enabled": false,
-        "interval": 7,
-        "key": "j"
+        "interval": 600,
+        "key": "x",
+        "delay_min": 300,
+        "delay_max": 500
+      },
+      {
+        "enabled": true,
+        "interval": 2,
+        "key": "",
+        "delay_min": 300,
+        "delay_max": 500
       }
     ]
   },
@@ -49,13 +57,15 @@
       {
         "enabled": true,
         "region": [
-          -1463,
-          1349,
-          -1358,
-          1367
+          -1459,
+          1346,
+          -1376,
+          1368
         ],
         "threshold": 5000,
-        "key": "x"
+        "key": "x",
+        "delay_min": 100,
+        "delay_max": 200
       },
       {
         "enabled": false,
@@ -66,8 +76,22 @@
           0
         ],
         "threshold": 300,
-        "key": "f6"
+        "key": "c",
+        "delay_min": 100,
+        "delay_max": 200
       }
     ]
+  },
+  "alarm": {
+    "sound": "D:/workspace/autodoor/voice/2026-01-08 22-27-27.mp3",
+    "ocr": {
+      "enabled": true
+    },
+    "timed": {
+      "enabled": true
+    },
+    "number": {
+      "enabled": false
+    }
   }
 }

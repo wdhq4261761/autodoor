@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, filedialog
 import pyautogui
 import pytesseract
 from PIL import Image, ImageGrab
@@ -14,6 +14,14 @@ import json
 import platform
 from collections import deque
 
+# 导入pygame用于音频播放
+try:
+    import pygame
+    pygame.mixer.init()
+    PYGAME_AVAILABLE = True
+except ImportError:
+    PYGAME_AVAILABLE = False
+
 # 全局版本号配置
 VERSION = "1.1.0"
 
@@ -25,6 +33,9 @@ except ImportError:
 
 class AutoDoorOCR:
     def __init__(self):
+        # 禁用PyAutoGUI的故障安全机制，防止鼠标移动到屏幕角落时触发异常
+        pyautogui.FAILSAFE = False
+        
         self.root = tk.Tk()
         self.root.title(f"AutoDoor OCR 识别系统 v{VERSION}")
         self.root.geometry("800x700") 
@@ -84,16 +95,35 @@ class AutoDoorOCR:
         self.tesseract_path = ""
         self.tesseract_available = False
         
+        # 报警功能相关
+        self.alarm_enabled = {}
+        self.alarm_sound = tk.StringVar(value="")  # 全局报警声音
+        self.alarm_volume = tk.IntVar(value=70)  # 全局报警音量，默认70%
+        self.alarm_volume_str = tk.StringVar(value="70")  # 用于显示的音量字符串
+        
+        # 初始化报警配置
+        for module in ["ocr", "timed", "number"]:
+            self.alarm_enabled[module] = tk.BooleanVar(value=False)
+        
+        # 按键延迟配置 - 文字识别模块
+        self.ocr_delay_min = tk.IntVar(value=300)
+        self.ocr_delay_max = tk.IntVar(value=500)
+        
         # 先创建界面元素，确保所有UI变量都被初始化
         self.create_widgets()
         
-        # 加载配置（包括Tesseract路径）
+        # 加载配置（包括Tesseract路径和报警设置）
         self.load_config()
         
         # 如果配置中没有Tesseract路径，使用项目自带的tesseract
         config_updated = False
         if not self.tesseract_path:
             self.tesseract_path = self.get_default_tesseract_path()
+            config_updated = True
+        
+        # 如果配置中没有报警声音路径，使用项目自带的alarm.mp3
+        if not self.alarm_sound.get():
+            self.alarm_sound.set(self.get_default_alarm_sound_path())
             config_updated = True
         
         # 执行Tesseract引擎的存在性检测和可用性验证
@@ -153,6 +183,28 @@ class AutoDoorOCR:
         
         self.log_message(f"默认Tesseract路径: {tesseract_path}")
         return tesseract_path
+    
+    def get_default_alarm_sound_path(self):
+        """获取默认的报警声音路径，使用项目自带的alarm.mp3
+        支持Windows和Mac平台，同时支持打包后的环境
+        """
+        
+        # 获取程序运行目录
+        if hasattr(sys, '_MEIPASS'):
+            # 打包后的环境，使用_MEIPASS获取运行目录
+            app_root = sys._MEIPASS
+        else:
+            # 开发环境，使用当前文件所在目录
+            app_root = os.path.dirname(os.path.abspath(__file__))
+        
+        # 构建跨平台的报警声音路径
+        alarm_path = os.path.join(app_root, "voice", "alarm.mp3")
+        
+        # 确保路径格式正确
+        alarm_path = os.path.normpath(alarm_path)
+        
+        self.log_message(f"默认报警声音路径: {alarm_path}")
+        return alarm_path
     
     def check_tesseract_availability(self):
         """检查Tesseract OCR是否可用
@@ -328,12 +380,12 @@ class AutoDoorOCR:
         
         # 禁止商用声明
         footer_label = ttk.Label(footer_frame, text="本程序仅供个人学习研究使用，禁止商用 | 制作人：", 
-                                  font=("Arial", 10), foreground="#888888", cursor="arrow")
+                                  font=("等线", 10), foreground="#888888", cursor="arrow")
         footer_label.pack(side=tk.LEFT)
         
         # 制作人Bilibili超链接（使用Label模拟链接样式）
         author_label = ttk.Label(footer_frame, text="Flown王砖家", 
-                                  font=("Arial", 10, "underline"), foreground="blue", cursor="hand2")
+                                  font=("等线", 10), foreground="blue", cursor="hand2")
         author_label.pack(side=tk.LEFT)
         author_label.bind("<Button-1>", lambda e: self.open_bilibili())
     
@@ -402,9 +454,64 @@ class AutoDoorOCR:
         current_key_label.pack(side=tk.LEFT, padx=(0, 5))
         
         # 设置按键按钮
-        self.set_key_btn = ttk.Button(key_config_frame, text="设置", 
+        self.set_key_btn = ttk.Button(key_config_frame, text="修改按键", 
                                     command=lambda: self.start_key_listening(self.key_var, self.set_key_btn))
-        self.set_key_btn.pack(side=tk.LEFT)
+        self.set_key_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+
+        
+        # 延迟配置 - 与识别间隔、暂停时长保持一致的垂直布局
+        delay_setting_frame = ttk.Frame(row1_frame)
+        delay_setting_frame.pack(side=tk.LEFT, padx=(0, 20))
+        delay_label = ttk.Label(delay_setting_frame, text="按键时长：")
+        delay_label.pack(anchor=tk.W, pady=(0, 5))
+        
+        delay_config_frame = ttk.Frame(delay_setting_frame)
+        delay_config_frame.pack(fill=tk.X)
+        
+        # 延迟最小值输入框
+        def validate_positive_int(P):
+            if P == "":
+                return True
+            try:
+                val = int(P)
+                return val > 0
+            except ValueError:
+                return False
+        
+        delay_min_entry = ttk.Entry(delay_config_frame, textvariable=self.ocr_delay_min, width=5, validate="key")
+        delay_min_entry.pack(side=tk.LEFT)
+        delay_min_entry.configure(validatecommand=(delay_min_entry.register(validate_positive_int), '%P'))
+        
+        # 失去焦点时的验证，确保值为正整数
+        def validate_min_on_focusout(event):
+            value = self.ocr_delay_min.get()
+            if value <= 0:
+                self.ocr_delay_min.set(300)
+        delay_min_entry.bind("<FocusOut>", validate_min_on_focusout)
+        
+        ttk.Label(delay_config_frame, text=" - ", width=2).pack(side=tk.LEFT)
+        
+        delay_max_entry = ttk.Entry(delay_config_frame, textvariable=self.ocr_delay_max, width=5, validate="key")
+        delay_max_entry.pack(side=tk.LEFT)
+        delay_max_entry.configure(validatecommand=(delay_max_entry.register(validate_positive_int), '%P'))
+        
+        # 失去焦点时的验证，确保值为正整数且不小于最小值
+        def validate_max_on_focusout(event):
+            min_val = self.ocr_delay_min.get()
+            max_val = self.ocr_delay_max.get()
+            if max_val <= 0:
+                self.ocr_delay_max.set(500)
+            elif max_val < min_val:
+                self.ocr_delay_max.set(min_val)
+        delay_max_entry.bind("<FocusOut>", validate_max_on_focusout)
+        
+        ttk.Label(delay_config_frame, text="ms", width=3).pack(side=tk.LEFT)
+        
+        # 报警开关 - 移动到按键时长右侧
+        alarm_switch = ttk.Checkbutton(delay_config_frame, text="启用报警", variable=self.alarm_enabled["ocr"],
+                                     command=lambda: self.toggle_alarm("ocr"))
+        alarm_switch.pack(side=tk.LEFT, padx=(10, 0))
         
         # 第二部分：关键词和语言设置
         keyword_language_frame = ttk.LabelFrame(setting_frame, text="关键词和语言", padding="10")
@@ -500,20 +607,77 @@ class AutoDoorOCR:
             timed_current_key_label.pack(side=tk.LEFT, padx=(0, 5))
             
             # 设置按键按钮
-            set_timed_key_btn = ttk.Button(timed_key_config_frame, text="设置", width=6)
+            set_timed_key_btn = ttk.Button(timed_key_config_frame, text="修改按键", width=8)
             set_timed_key_btn.pack(side=tk.LEFT)
             # 单独绑定事件，避免UnboundLocalError
             set_timed_key_btn.config(command=lambda v=key_var, b=set_timed_key_btn: self.start_key_listening(v, b))
             
+            # 按键延迟配置
+            delay_min_var = tk.IntVar(value=300)
+            delay_max_var = tk.IntVar(value=500)
+            
+            delay_frame = ttk.Frame(timed_key_config_frame)
+            delay_frame.pack(side=tk.LEFT, padx=(10, 0))
+            
+            # 添加"延迟："文本，确保使用全局字体样式
+            ttk.Label(delay_frame, text="按键时长：").pack(side=tk.LEFT)
+            
+            # 延迟最小值输入框
+            def validate_positive_int(P):
+                if P == "":
+                    return True
+                try:
+                    val = int(P)
+                    return val > 0
+                except ValueError:
+                    return False
+            
+            delay_min_entry = ttk.Entry(delay_frame, textvariable=delay_min_var, width=5, validate="key")
+            delay_min_entry.pack(side=tk.LEFT)
+            delay_min_entry.configure(validatecommand=(delay_min_entry.register(validate_positive_int), '%P'))
+            
+            # 失去焦点时的验证，确保值为正整数
+            def validate_min_on_focusout(event):
+                value = delay_min_var.get()
+                if value <= 0:
+                    delay_min_var.set(300)
+            delay_min_entry.bind("<FocusOut>", validate_min_on_focusout)
+            
+            ttk.Label(delay_frame, text=" - ", width=2).pack(side=tk.LEFT)
+            
+            delay_max_entry = ttk.Entry(delay_frame, textvariable=delay_max_var, width=5, validate="key")
+            delay_max_entry.pack(side=tk.LEFT)
+            delay_max_entry.configure(validatecommand=(delay_max_entry.register(validate_positive_int), '%P'))
+            
+            # 失去焦点时的验证，确保值为正整数且不小于最小值
+            def validate_max_on_focusout(event):
+                min_val = delay_min_var.get()
+                max_val = delay_max_var.get()
+                if max_val <= 0:
+                    delay_max_var.set(500)
+                elif max_val < min_val:
+                    delay_max_var.set(min_val)
+            delay_max_entry.bind("<FocusOut>", validate_max_on_focusout)
+            
+            ttk.Label(delay_frame, text="ms", width=3).pack(side=tk.LEFT)
+            
+            # 报警开关 - 为每个定时组创建独立变量
+            alarm_var = tk.BooleanVar(value=False)
+            alarm_switch = ttk.Checkbutton(timed_key_config_frame, text="启用报警", variable=alarm_var)
+            alarm_switch.pack(side=tk.LEFT, padx=(10, 0))
+            
             self.timed_groups.append({
                 "enabled": enabled_var,
                 "interval": interval_var,
-                "key": key_var
+                "key": key_var,
+                "delay_min": delay_min_var,
+                "delay_max": delay_max_var,
+                "alarm": alarm_var
             })
         
         # 操作按钮
         action_frame = ttk.Frame(timed_frame)
-        action_frame.pack(fill=tk.X, pady=(0, 10))
+        action_frame.pack(fill=tk.X, pady=(10, 10))
         
         self.start_timed_btn = ttk.Button(action_frame, text="开始定时任务", command=self.start_timed_tasks, state="normal")
         self.start_timed_btn.pack(side=tk.LEFT, padx=(0, 10))
@@ -532,35 +696,43 @@ class AutoDoorOCR:
             region_frame = ttk.LabelFrame(number_frame, text=f"区域{i+1}", padding="10")
             region_frame.pack(fill=tk.X, pady=(0, 10))
             
+            # 第一行：启用开关、选择区域、区域坐标
+            row1_frame = ttk.Frame(region_frame)
+            row1_frame.pack(fill=tk.X, pady=(0, 10))
+            
             # 启用开关
             enabled_var = tk.BooleanVar(value=False)
-            enabled_switch = ttk.Checkbutton(region_frame, text="启用", variable=enabled_var)
+            enabled_switch = ttk.Checkbutton(row1_frame, text="启用", variable=enabled_var)
             enabled_switch.pack(side=tk.LEFT, padx=(0, 10))
             
             # 区域选择
-            select_btn = ttk.Button(region_frame, text="选择区域", command=lambda idx=i: self.start_number_region_selection(idx))
+            select_btn = ttk.Button(row1_frame, text="选择区域", command=lambda idx=i: self.start_number_region_selection(idx))
             select_btn.pack(side=tk.LEFT, padx=(0, 10))
             
             region_var = tk.StringVar(value="未选择区域")
-            region_label = ttk.Label(region_frame, textvariable=region_var)
+            region_label = ttk.Label(row1_frame, textvariable=region_var, width=25)  # 设置固定宽度
             region_label.pack(side=tk.LEFT, padx=(0, 10))
             
+            # 第二行：阈值设置、按键设置、延迟配置、报警开关
+            row2_frame = ttk.Frame(region_frame)
+            row2_frame.pack(fill=tk.X)
+            
             # 阈值设置
-            threshold_label = ttk.Label(region_frame, text="阈值:", width=10)
+            threshold_label = ttk.Label(row2_frame, text="阈值:", width=5)  # 减小宽度
             threshold_label.pack(side=tk.LEFT)
             
             threshold_var = tk.IntVar(value=500 if i == 0 else 1000)
-            threshold_entry = ttk.Entry(region_frame, textvariable=threshold_var, width=10)
+            threshold_entry = ttk.Entry(row2_frame, textvariable=threshold_var, width=10)
             threshold_entry.pack(side=tk.LEFT, padx=(0, 10))
             
             # 按键设置
-            key_label = ttk.Label(region_frame, text="按键:", width=5)
+            key_label = ttk.Label(row2_frame, text="按键:", width=5)
             key_label.pack(side=tk.LEFT)
             
             key_var = tk.StringVar(value=["f1", "f2"][i])
             
             # 按键配置区域
-            number_key_config_frame = ttk.Frame(region_frame)
+            number_key_config_frame = ttk.Frame(row2_frame)
             number_key_config_frame.pack(side=tk.LEFT)
             
             # 显示当前按键的标签
@@ -568,22 +740,79 @@ class AutoDoorOCR:
             number_current_key_label.pack(side=tk.LEFT, padx=(0, 5))
             
             # 设置按键按钮
-            set_number_key_btn = ttk.Button(number_key_config_frame, text="设置", width=6)
+            set_number_key_btn = ttk.Button(number_key_config_frame, text="修改按键", width=8)
             set_number_key_btn.pack(side=tk.LEFT)
             # 单独绑定事件，避免UnboundLocalError
             set_number_key_btn.config(command=lambda v=key_var, b=set_number_key_btn: self.start_key_listening(v, b))
+            
+            # 按键延迟配置
+            delay_min_var = tk.IntVar(value=100)
+            delay_max_var = tk.IntVar(value=200)
+            
+            delay_frame = ttk.Frame(number_key_config_frame)
+            delay_frame.pack(side=tk.LEFT, padx=(10, 0))
+            
+            # 添加"延迟："文本，确保使用全局字体样式
+            ttk.Label(delay_frame, text="按键时长：").pack(side=tk.LEFT)
+            
+            # 延迟最小值输入框
+            def validate_positive_int(P):
+                if P == "":
+                    return True
+                try:
+                    val = int(P)
+                    return val > 0
+                except ValueError:
+                    return False
+            
+            delay_min_entry = ttk.Entry(delay_frame, textvariable=delay_min_var, width=5, validate="key")
+            delay_min_entry.pack(side=tk.LEFT)
+            delay_min_entry.configure(validatecommand=(delay_min_entry.register(validate_positive_int), '%P'))
+            
+            # 失去焦点时的验证，确保值为正整数
+            def validate_min_on_focusout(event):
+                value = delay_min_var.get()
+                if value <= 0:
+                    delay_min_var.set(100)
+            delay_min_entry.bind("<FocusOut>", validate_min_on_focusout)
+            
+            ttk.Label(delay_frame, text=" - ", width=2).pack(side=tk.LEFT)
+            
+            delay_max_entry = ttk.Entry(delay_frame, textvariable=delay_max_var, width=5, validate="key")
+            delay_max_entry.pack(side=tk.LEFT)
+            delay_max_entry.configure(validatecommand=(delay_max_entry.register(validate_positive_int), '%P'))
+            
+            # 失去焦点时的验证，确保值为正整数且不小于最小值
+            def validate_max_on_focusout(event):
+                min_val = delay_min_var.get()
+                max_val = delay_max_var.get()
+                if max_val <= 0:
+                    delay_max_var.set(200)
+                elif max_val < min_val:
+                    delay_max_var.set(min_val)
+            delay_max_entry.bind("<FocusOut>", validate_max_on_focusout)
+            
+            ttk.Label(delay_frame, text="ms", width=3).pack(side=tk.LEFT)
+            
+            # 报警开关 - 为每个数字识别区域创建独立变量
+            alarm_var = tk.BooleanVar(value=False)
+            alarm_switch = ttk.Checkbutton(number_key_config_frame, text="启用报警", variable=alarm_var)
+            alarm_switch.pack(side=tk.LEFT, padx=(10, 0))
             
             self.number_regions.append({
                 "enabled": enabled_var,
                 "region_var": region_var,
                 "region": None,
                 "threshold": threshold_var,
-                "key": key_var
+                "key": key_var,
+                "delay_min": delay_min_var,
+                "delay_max": delay_max_var,
+                "alarm": alarm_var
             })
         
         # 操作按钮
         action_frame = ttk.Frame(number_frame)
-        action_frame.pack(fill=tk.X, pady=(0, 10))
+        action_frame.pack(fill=tk.X, pady=(10, 10))
         
         self.start_number_btn = ttk.Button(action_frame, text="开始数字识别", command=self.start_number_recognition, state="normal")
         self.start_number_btn.pack(side=tk.LEFT, padx=(0, 10))
@@ -652,6 +881,47 @@ class AutoDoorOCR:
         
         self.y_coord_entry = ttk.Entry(y_frame, textvariable=self.y_coord_var, width=10, state="disabled")
         self.y_coord_entry.pack(side=tk.LEFT)
+        
+        # 报警声音设置
+        alarm_sound_frame = ttk.LabelFrame(basic_frame, text="报警声音设置", padding="10")
+        alarm_sound_frame.pack(fill=tk.X, pady=(10, 10))
+        
+        # 报警声音文件选择
+        sound_file_frame = ttk.Frame(alarm_sound_frame)
+        sound_file_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        alarm_sound_label = ttk.Label(sound_file_frame, text="报警声音:", width=12, anchor=tk.W)
+        alarm_sound_label.pack(side=tk.LEFT, padx=(0, 10))
+        
+        alarm_sound_entry = ttk.Entry(sound_file_frame, textvariable=self.alarm_sound, state="readonly", width=30)
+        alarm_sound_entry.pack(side=tk.LEFT, padx=(0, 10))
+        
+        alarm_sound_btn = ttk.Button(sound_file_frame, text="选择", width=8,
+                                   command=self.select_alarm_sound)
+        alarm_sound_btn.pack(side=tk.LEFT)
+        
+        # 报警音量调节
+        volume_frame = ttk.Frame(alarm_sound_frame)
+        volume_frame.pack(fill=tk.X)
+        
+        volume_label = ttk.Label(volume_frame, text="音量调节:", width=12, anchor=tk.W)
+        volume_label.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # 音量变化跟踪函数，确保显示为整数
+        def update_volume_display(*args):
+            self.alarm_volume_str.set(str(self.alarm_volume.get()))
+        
+        # 绑定音量变化事件
+        self.alarm_volume.trace_add("write", update_volume_display)
+        
+        volume_scale = ttk.Scale(volume_frame, from_=0, to=100, orient=tk.HORIZONTAL, variable=self.alarm_volume, length=200)
+        volume_scale.pack(side=tk.LEFT, padx=(0, 10))
+        
+        volume_value_label = ttk.Label(volume_frame, textvariable=self.alarm_volume_str, width=3)
+        volume_value_label.pack(side=tk.LEFT)
+        
+        volume_percent_label = ttk.Label(volume_frame, text="%")
+        volume_percent_label.pack(side=tk.LEFT)
         
         # 配置管理
         config_frame = ttk.Frame(basic_frame)
@@ -728,16 +998,45 @@ class AutoDoorOCR:
         # 保存当前焦点
         current_focus = self.root.focus_get()
         
+        # 保存原始状态文本，用于恢复
+        original_status = self.status_var.get()
+        
         # 更新按钮状态
         original_text = button.cget("text")
-        button.config(text="请按任意键...")
         button.config(state="disabled")
+        
+        # 在原有状态栏显示提示信息
+        self.status_var.set("请按任意按键进行设置，按ESC键清空当前记录")
         
         # 创建按键监听函数
         def on_key_press(event):
             """处理按键按下事件"""
+            # 恢复原始状态文本
+            self.status_var.set(original_status)
+            
             # 获取按键名称
-            key = event.keysym.lower()
+            keysym = event.keysym
+            
+            # 特殊处理ESC键：清空当前记录的按键
+            if keysym == "Escape":
+                # 清空当前按键配置
+                target_var.set("")
+                
+                # 恢复按钮状态
+                button.config(state="normal")
+                
+                # 解除按键监听
+                self.root.unbind("<KeyPress>")
+                
+                # 恢复焦点
+                if current_focus:
+                    current_focus.focus_set()
+                
+                # 记录日志
+                self.log_message("已清空当前按键设置")
+                # 保存配置
+                self.save_config()
+                return
             
             # 特殊按键映射
             key_mappings = {
@@ -772,20 +1071,28 @@ class AutoDoorOCR:
             }
             
             # 映射特殊按键
-            if key in key_mappings:
-                key = key_mappings[key]
+            if keysym in key_mappings:
+                key = key_mappings[keysym]
+            else:
+                key = keysym.lower()
             
             # 确保按键在可用列表中
             available_keys = self.get_available_keys()
             if key not in available_keys:
                 self.log_message(f"不支持的按键: {key}")
+                # 恢复按钮状态
+                button.config(state="normal")
+                # 解除按键监听
+                self.root.unbind("<KeyPress>")
+                # 恢复焦点
+                if current_focus:
+                    current_focus.focus_set()
                 return
             
             # 保存按键
             target_var.set(key)
             
             # 恢复按钮状态
-            button.config(text=original_text)
             button.config(state="normal")
             
             # 解除按键监听
@@ -807,7 +1114,9 @@ class AutoDoorOCR:
         # 设置超时，防止永久监听
         def timeout():
             if button.cget("state") == "disabled":
-                button.config(text=original_text)
+                # 恢复原始状态文本
+                self.status_var.set(original_status)
+                # 恢复按钮状态
                 button.config(state="normal")
                 self.root.unbind("<KeyPress>")
                 if current_focus:
@@ -923,6 +1232,12 @@ class AutoDoorOCR:
                     self.ocr_language = ocr_config['language']
                     self.language_var.set(self.ocr_language)
                 
+                # 加载按键延迟配置
+                if 'delay_min' in ocr_config:
+                    self.ocr_delay_min.set(ocr_config['delay_min'])
+                if 'delay_max' in ocr_config:
+                    self.ocr_delay_max.set(ocr_config['delay_max'])
+                
                 # 3. 加载点击模式和坐标配置
                 click_config = {}
                 if 'click' in config and isinstance(config['click'], dict):
@@ -955,6 +1270,10 @@ class AutoDoorOCR:
                                 self.timed_groups[i]['interval'].set(group['interval'])
                             if 'key' in group:
                                 self.timed_groups[i]['key'].set(group['key'])
+                            if 'delay_min' in group:
+                                self.timed_groups[i]['delay_min'].set(group['delay_min'])
+                            if 'delay_max' in group:
+                                self.timed_groups[i]['delay_max'].set(group['delay_max'])
                 
                 # 5. 加载数字识别配置
                 number_config = config.get('number_recognition', {})
@@ -975,8 +1294,30 @@ class AutoDoorOCR:
                                 self.number_regions[i]['threshold'].set(region_config['threshold'])
                             if 'key' in region_config:
                                 self.number_regions[i]['key'].set(region_config['key'])
+                            if 'delay_min' in region_config:
+                                self.number_regions[i]['delay_min'].set(region_config['delay_min'])
+                            if 'delay_max' in region_config:
+                                self.number_regions[i]['delay_max'].set(region_config['delay_max'])
                 
-                # 6. 更新界面控件状态
+                # 6. 加载报警配置
+                alarm_config = config.get('alarm', {})
+                
+                # 加载全局报警声音
+                if 'sound' in alarm_config:
+                    self.alarm_sound.set(alarm_config['sound'])
+                
+                # 加载报警音量
+                if 'volume' in alarm_config:
+                    self.alarm_volume.set(alarm_config['volume'])
+                    self.alarm_volume_str.set(str(alarm_config['volume']))
+                
+                # 加载各模块报警开关状态
+                for module in ["ocr", "timed", "number"]:
+                    module_config = alarm_config.get(module, {})
+                    if 'enabled' in module_config:
+                        self.alarm_enabled[module].set(module_config['enabled'])
+                
+                # 更新界面控件状态
                 self.update_axis_inputs()
                 
                 self.log_message("配置加载成功")
@@ -1343,7 +1684,9 @@ class AutoDoorOCR:
                 timed_groups_config.append({
                     'enabled': group['enabled'].get(),
                     'interval': group['interval'].get(),
-                    'key': group['key'].get()
+                    'key': group['key'].get(),
+                    'delay_min': group['delay_min'].get(),
+                    'delay_max': group['delay_max'].get()
                 })
             
             # 2. 保存数字识别配置
@@ -1353,7 +1696,9 @@ class AutoDoorOCR:
                     'enabled': region_config['enabled'].get(),
                     'region': list(region_config['region']) if region_config['region'] else None,
                     'threshold': region_config['threshold'].get(),
-                    'key': region_config['key'].get()
+                    'key': region_config['key'].get(),
+                    'delay_min': region_config['delay_min'].get(),
+                    'delay_max': region_config['delay_max'].get()
                 })
             
             # 3. 确保关键词列表是最新的
@@ -1377,7 +1722,9 @@ class AutoDoorOCR:
                     'selected_region': list(self.selected_region) if self.selected_region else None,
                     'custom_key': self.key_var.get(),
                     'custom_keywords': current_keywords,
-                    'language': self.language_var.get()
+                    'language': self.language_var.get(),
+                    'delay_min': self.ocr_delay_min.get(),
+                    'delay_max': self.ocr_delay_max.get()
                 },
                 
                 # Tesseract配置
@@ -1400,6 +1747,21 @@ class AutoDoorOCR:
                 # 数字识别配置
                 'number_recognition': {
                     'regions': number_regions_config
+                },
+                
+                # 报警功能配置
+                'alarm': {
+                    'sound': self.alarm_sound.get(),
+                    'volume': self.alarm_volume.get(),
+                    'ocr': {
+                        'enabled': self.alarm_enabled['ocr'].get()
+                    },
+                    'timed': {
+                        'enabled': self.alarm_enabled['timed'].get()
+                    },
+                    'number': {
+                        'enabled': self.alarm_enabled['number'].get()
+                    }
                 }
             }
             
@@ -1425,26 +1787,35 @@ class AutoDoorOCR:
         """触发动作序列"""
         self.log_message("检测到关键词，执行动作...")
         
-        # 计算点击位置
-        click_x, click_y = self.calculate_click_position()
+        # 播放OCR模块报警声音
+        self.play_alarm_sound(self.alarm_enabled["ocr"])
         
-        try:
-            # 1. 鼠标左键点击指定位置
-            pyautogui.click(click_x, click_y)
-            self.log_message(f"点击位置: ({click_x}, {click_y})")
+        # 获取自定义按键
+        custom_key = self.key_var.get()
+        
+        # 只有当按键不为空时才执行按键操作
+        if custom_key:
+            # 计算点击位置
+            click_x, click_y = self.calculate_click_position()
             
-            # 2. 等待固定时间（无需用户修改）
-            time.sleep(self.click_delay)
-            
-            # 3. 通过事件队列按下自定义按键
-            custom_key = self.key_var.get()
-            self.add_event(('keypress', custom_key))
-            
-            # 记录触发时间
-            self.last_trigger_time = time.time()
-            
-        except Exception as e:
-            self.log_message(f"动作执行错误: {str(e)}")
+            try:
+                # 1. 鼠标左键点击指定位置
+                pyautogui.click(click_x, click_y)
+                self.log_message(f"点击位置: ({click_x}, {click_y})")
+                
+                # 2. 等待固定时间（无需用户修改）
+                time.sleep(self.click_delay)
+                
+                # 3. 通过事件队列按下自定义按键
+                self.add_event(('keypress', custom_key), ('ocr', 0))
+                
+                # 记录触发时间
+                self.last_trigger_time = time.time()
+                
+            except Exception as e:
+                self.log_message(f"动作执行错误: {str(e)}")
+        else:
+            self.log_message("按键配置为空，仅执行报警操作")
     
     def calculate_click_position(self):
         """计算点击位置"""
@@ -1483,22 +1854,23 @@ class AutoDoorOCR:
                 with self.event_cond:
                     while not self.event_queue:
                         self.event_cond.wait()
-                    event = self.event_queue.popleft()
+                    event_data = self.event_queue.popleft()
                 
                 # 执行事件
-                self.execute_event(event)
+                self.execute_event(event_data)
             except Exception as e:
                 self.log_message(f"事件处理错误: {str(e)}")
                 time.sleep(1)
     
-    def add_event(self, event):
+    def add_event(self, event, module_info=None):
         """添加事件到队列"""
         with self.event_cond:
-            self.event_queue.append(event)
+            self.event_queue.append((event, module_info))
             self.event_cond.notify()
     
-    def execute_event(self, event):
+    def execute_event(self, event_data):
         """执行具体事件"""
+        event, module_info = event_data
         event_type, data = event
         
         if event_type == 'keypress':
@@ -1507,8 +1879,32 @@ class AutoDoorOCR:
                 # 立即按下按键
                 pyautogui.keyDown(key)
                 
-                # 生成300-500毫秒的随机延迟
-                delay = random.randint(300, 500) / 1000  # 转换为秒
+                # 根据模块信息获取延迟范围
+                if module_info:
+                    module_type, module_index = module_info
+                    if module_type == 'ocr':
+                        delay_min = self.ocr_delay_min.get()
+                        delay_max = self.ocr_delay_max.get()
+                    elif module_type == 'timed':
+                        delay_min = self.timed_groups[module_index]['delay_min'].get()
+                        delay_max = self.timed_groups[module_index]['delay_max'].get()
+                    elif module_type == 'number':
+                        delay_min = self.number_regions[module_index]['delay_min'].get()
+                        delay_max = self.number_regions[module_index]['delay_max'].get()
+                    else:
+                        delay_min = 300
+                        delay_max = 500
+                else:
+                    # 默认延迟
+                    delay_min = 300
+                    delay_max = 500
+                
+                # 确保延迟范围有效
+                delay_min = max(1, delay_min)  # 至少1ms
+                delay_max = max(delay_min, delay_max)  # 确保max不小于min
+                
+                # 生成随机延迟
+                delay = random.randint(delay_min, delay_max) / 1000  # 转换为秒
                 
                 # 延迟等待（不会影响UI主线程，因为事件处理在单独线程中）
                 time.sleep(delay)
@@ -1519,6 +1915,9 @@ class AutoDoorOCR:
                 self.log_message(f"按下了 {key} 键，延迟 {delay*1000:.0f} 毫秒")
             except Exception as e:
                 self.log_message(f"按键执行错误: {str(e)}")
+        elif event_type == 'exit':
+            # 退出事件，什么都不做
+            pass
         # 其他事件类型...
     
     def start_timed_tasks(self):
@@ -1570,8 +1969,15 @@ class AutoDoorOCR:
         # 检查线程是否在timed_threads列表中，以及定时组是否启用
         while current_thread in self.timed_threads and self.timed_groups[group_index]["enabled"].get():
             try:
-                self.add_event(('keypress', key))
-                self.log_message(f"定时任务{group_index+1}触发按键: {key}")
+                # 播放定时模块报警声音
+                self.play_alarm_sound(self.timed_groups[group_index]["alarm"])
+                
+                # 只有当按键不为空时才执行按键操作
+                if key:
+                    self.add_event(('keypress', key), ('timed', group_index))
+                    self.log_message(f"定时任务{group_index+1}触发按键: {key}")
+                else:
+                    self.log_message(f"定时任务{group_index+1}按键配置为空，仅执行报警操作")
                 
                 # 等待指定的时间间隔
                 for _ in range(interval):
@@ -1677,8 +2083,15 @@ class AutoDoorOCR:
                 if number is not None:
                     self.log_message(f"数字识别{region_index+1}解析结果: {number}")
                     if number < threshold:
-                        self.add_event(('keypress', key))
+                        # 播放数字识别模块报警声音
+                        self.play_alarm_sound(self.number_regions[region_index]["alarm"])
+                        
+                        # 只有当按键不为空时才执行按键操作
+                    if key:
+                        self.add_event(('keypress', key), ('number', region_index))
                         self.log_message(f"数字识别{region_index+1}触发按键: {key}")
+                    else:
+                        self.log_message(f"数字识别{region_index+1}按键配置为空，仅执行报警操作")
                 
                 time.sleep(1)  # 1秒间隔
             except Exception as e:
@@ -1768,6 +2181,59 @@ class AutoDoorOCR:
         
         return text
     
+    def play_alarm_sound(self, alarm_var):
+        """播放报警声音
+        
+        Args:
+            alarm_var: 报警开关的BooleanVar变量
+        """
+        if not PYGAME_AVAILABLE:
+            self.log_message("pygame库未安装，无法播放报警声音")
+            return
+        
+        if not alarm_var.get():
+            return
+        
+        sound_file = self.alarm_sound.get()
+        if not sound_file or not os.path.exists(sound_file):
+            self.log_message("未设置有效的全局报警声音文件")
+            return
+        
+        try:
+            pygame.mixer.music.load(sound_file)
+            pygame.mixer.music.set_volume(self.alarm_volume.get() / 100)  # 设置音量
+            pygame.mixer.music.play()
+            self.log_message("报警声音已播放")
+        except Exception as e:
+            self.log_message(f"播放报警声音失败: {str(e)}")
+    
+    def select_alarm_sound(self):
+        """选择全局报警声音文件
+        """
+        filetypes = [
+            ("音频文件", "*.mp3 *.wav *.ogg *.flac"),
+            ("所有文件", "*.*")
+        ]
+        
+        filename = filedialog.askopenfilename(
+            title="选择全局报警声音",
+            filetypes=filetypes
+        )
+        
+        if filename:
+            self.alarm_sound.set(filename)
+            self.log_message(f"已选择全局报警声音: {os.path.basename(filename)}")
+            self.save_config()
+    
+    def toggle_alarm(self, module):
+        """切换报警开关状态
+        
+        Args:
+            module: 模块名称，如"ocr"、"timed"或"number"
+        """
+        self.log_message(f"{module}模块报警状态已{'启用' if self.alarm_enabled[module].get() else '禁用'}")
+        self.save_config()
+    
 
     
     def exit_program(self):
@@ -1780,7 +2246,7 @@ class AutoDoorOCR:
         # 停止事件线程
         self.is_event_running = False
         if self.event_thread:
-            self.add_event(('exit', None))
+            self.add_event(('exit', None), None)
             self.event_thread.join(timeout=1)
         
         self.root.destroy()

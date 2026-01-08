@@ -35,9 +35,9 @@ if os.path.exists(tesseract_dir):
             
             tesseract_files.append((file_path, dest_dir))
 
-# 配置文件
+# 配置文件 - 移除本地配置文件，使用应用程序生成的默认配置
 data_files = [
-    (os.path.join(project_root, 'autodoor_config.json'), '.'),
+    (os.path.join(project_root, 'voice/alarm.mp3'), 'voice'),
 ] + tesseract_files
 
 a = Analysis(

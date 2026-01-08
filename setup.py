@@ -30,7 +30,7 @@ setup(
     install_requires=requirements,
     data_files=[
         ('tesseract', tesseract_files),
-        ('', ['autodoor_config.json'])
+        ('voice', ['voice/alarm.mp3'])
     ],
     entry_points={
         'console_scripts': [
