@@ -23,7 +23,7 @@ except ImportError:
     PYGAME_AVAILABLE = False
 
 # 全局版本号配置
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 # 尝试导入screeninfo库，如果不可用则提供安装提示
 try:
