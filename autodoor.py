@@ -33,7 +33,7 @@ except ImportError:
     PYGAME_AVAILABLE = False
 
 # 全局版本号配置
-VERSION = "2.0.1"
+VERSION = "2.0.2"
 
 class VersionChecker:
     def __init__(self, app):
@@ -481,10 +481,10 @@ class AutoDoorOCR:
         # 加载配置（包括Tesseract路径和报警设置）
         self.load_config()
 
-        # 如果配置中没有Tesseract路径，使用项目自带的tesseract
+        # 如果配置中没有Tesseract路径，使用空字符串（不强制使用项目自带的tesseract）
         config_updated = False
         if not self.tesseract_path:
-            self.tesseract_path = self.get_default_tesseract_path()
+            self.tesseract_path = ""  # 初始为空，让用户后续自行配置
             config_updated = True
 
         # 如果配置中没有报警声音路径，使用项目自带的alarm.mp3
@@ -495,14 +495,14 @@ class AutoDoorOCR:
         # 执行Tesseract引擎的存在性检测和可用性验证
         self.tesseract_available = self.check_tesseract_availability()
 
-        # 如果使用了默认Tesseract路径，将其保存到配置文件
+        # 如果使用了默认配置，将其保存到配置文件
         if config_updated:
             self.save_config()
 
         # 检查tesseract可用性
         if not self.tesseract_available:
-            messagebox.showwarning("警告", "未检测到Tesseract OCR引擎，请先安装并配置环境变量！")
-            self.status_var.set("Tesseract未安装")
+            messagebox.showinfo("提示", "未检测到Tesseract OCR引擎，请在设置中配置Tesseract路径后使用文字识别功能！")
+            self.status_var.set("Tesseract未配置")
 
         # 设置配置监听器
         self.setup_config_listeners()
@@ -544,7 +544,12 @@ class AutoDoorOCR:
                 os.path.join(os.path.dirname(app_root), "tesseract", "tesseract"),  # 应用包外部路径
                 # 针对.app包结构的额外路径
                 os.path.join(os.path.dirname(os.path.dirname(app_root)), "Resources", "tesseract", "tesseract"),
-                os.path.join(os.path.dirname(os.path.dirname(app_root)), "Resources", "tesseract")
+                os.path.join(os.path.dirname(os.path.dirname(app_root)), "Resources", "tesseract"),
+                # macOS系统路径
+                "/usr/local/bin/tesseract",  # Homebrew (Intel)
+                "/opt/homebrew/bin/tesseract",  # Homebrew (Apple Silicon)
+                # 其他可能的系统路径
+                "/usr/bin/tesseract"
             ]
 
             for path in possible_paths:
@@ -724,6 +729,11 @@ class AutoDoorOCR:
         Returns:
             bool: 如果Tesseract OCR可用则返回True，否则返回False
         """
+        # 如果tesseract路径为空，直接返回False
+        if not self.tesseract_path:
+            self.log_message("Tesseract路径未配置")
+            return False
+
         try:
             if not self._validate_tesseract_path():
                 return False
@@ -2988,7 +2998,7 @@ class AutoDoorOCR:
     def start_monitoring(self):
         """开始监控"""
         if not self.tesseract_available:
-            messagebox.showwarning("警告", "Tesseract OCR引擎不可用，请先安装并配置环境变量！")
+            messagebox.showinfo("提示", "Tesseract OCR引擎未配置，请在设置中配置Tesseract路径后使用文字识别功能！")
             return
 
         # 检查是否有启用的OCR组且已选择区域
@@ -5753,95 +5763,105 @@ class ScriptExecutor:
 
     def execute_command(self, command):
         """执行单个命令"""
-        if command["type"] in ["keydown", "keyup"]:
-            key = command["key"]
-            for _ in range(command["count"]):
-                if not self.is_running:
-                    break
-                while self.is_paused:
-                    time.sleep(0.1)
+        try:
+            if command["type"] in ["keydown", "keyup"]:
+                key = command["key"]
+                for _ in range(command["count"]):
                     if not self.is_running:
                         break
-                if not self.is_running:
-                    break
-                
-                if command["type"] == "keydown":
-                    pyautogui.keyDown(key)
-                    self.app.log_message(f"执行: 按下 {key}")
-                else:
-                    pyautogui.keyUp(key)
-                    self.app.log_message(f"执行: 抬起 {key}")
-        elif command["type"] in ["mouse_down", "mouse_up"]:
-            button = command["button"]
-            for _ in range(command["count"]):
-                if not self.is_running:
-                    break
-                while self.is_paused:
-                    time.sleep(0.1)
+                    while self.is_paused:
+                        time.sleep(0.1)
+                        if not self.is_running:
+                            break
                     if not self.is_running:
                         break
-                if not self.is_running:
-                    break
-                
-                if command["type"] == "mouse_down":
-                    pyautogui.mouseDown(button=button)
-                    self.app.log_message(f"执行: 按下鼠标{button}键")
-                else:
-                    pyautogui.mouseUp(button=button)
-                    self.app.log_message(f"执行: 抬起鼠标{button}键")
-        elif command["type"] == "moveto":
-            x = command["x"]
-            y = command["y"]
-            if self.is_running and not self.is_paused:
-                pyautogui.moveTo(x, y)
-                self.app.log_message(f"执行: 移动鼠标到 ({x}, {y})")
-        elif command["type"] == "delay":
-            delay_time = command["time"] / 1000  # 转换为秒
-            self.app.log_message(f"执行: 延迟 {delay_time}秒")
-            
-            # 分段延迟，以便能够响应暂停/停止命令
-            start_time = time.time()
-            elapsed_time = 0
-            while elapsed_time < delay_time:
-                if not self.is_running:
-                    break
-                while self.is_paused:
-                    time.sleep(0.1)
+                    
+                    if command["type"] == "keydown":
+                        pyautogui.keyDown(key)
+                        self.app.log_message(f"执行: 按下 {key}")
+                    else:
+                        pyautogui.keyUp(key)
+                        self.app.log_message(f"执行: 抬起 {key}")
+            elif command["type"] in ["mouse_down", "mouse_up"]:
+                button = command["button"]
+                for _ in range(command["count"]):
                     if not self.is_running:
                         break
-                if not self.is_running:
-                    break
+                    while self.is_paused:
+                        time.sleep(0.1)
+                        if not self.is_running:
+                            break
+                    if not self.is_running:
+                        break
+                    
+                    if command["type"] == "mouse_down":
+                        pyautogui.mouseDown(button=button)
+                        self.app.log_message(f"执行: 按下鼠标{button}键")
+                    else:
+                        pyautogui.mouseUp(button=button)
+                        self.app.log_message(f"执行: 抬起鼠标{button}键")
+            elif command["type"] == "moveto":
+                x = command["x"]
+                y = command["y"]
+                if self.is_running and not self.is_paused:
+                    pyautogui.moveTo(x, y)
+                    self.app.log_message(f"执行: 移动鼠标到 ({x}, {y})")
+            elif command["type"] == "delay":
+                delay_time = command["time"] / 1000  # 转换为秒
+                self.app.log_message(f"执行: 延迟 {delay_time}秒")
                 
-                sleep_time = min(0.1, delay_time - elapsed_time)
-                time.sleep(sleep_time)
-                elapsed_time = time.time() - start_time
-        elif command["type"] == "stopscript":
-            # 停止脚本执行，确保在主线程中执行
-            if not self.is_running:
-                return
-            while self.is_paused:
-                time.sleep(0.1)
+                # 分段延迟，以便能够响应暂停/停止命令
+                start_time = time.time()
+                elapsed_time = 0
+                while elapsed_time < delay_time:
+                    if not self.is_running:
+                        break
+                    while self.is_paused:
+                        time.sleep(0.1)
+                        if not self.is_running:
+                            break
+                    if not self.is_running:
+                        break
+                    
+                    sleep_time = min(0.1, delay_time - elapsed_time)
+                    time.sleep(sleep_time)
+                    elapsed_time = time.time() - start_time
+            elif command["type"] == "stopscript":
+                # 停止脚本执行，确保在主线程中执行
                 if not self.is_running:
                     return
-            if not self.is_running:
-                return
-            self.app.log_message("执行: 停止脚本")
-            # 调用应用程序的停止脚本方法，使用after确保在主线程中执行，传递stop_color_recognition=False参数
-            self.app.root.after(0, lambda: self.app.stop_script(stop_color_recognition=False))
-            # 不立即设置is_running为False，让线程继续执行到下一个命令
-        elif command["type"] == "startscript":
-            # 启动脚本执行，确保在主线程中执行
-            if not self.is_running:
-                return
-            while self.is_paused:
-                time.sleep(0.1)
+                while self.is_paused:
+                    time.sleep(0.1)
+                    if not self.is_running:
+                        return
                 if not self.is_running:
                     return
-            if not self.is_running:
-                return
-            self.app.log_message("执行: 启动脚本")
-            # 调用应用程序的启动脚本方法，使用after确保在主线程中执行，传递start_color_recognition=False参数
-            self.app.root.after(0, lambda: self.app.start_script(start_color_recognition=False))
+                self.app.log_message("执行: 停止脚本")
+                # 调用应用程序的停止脚本方法，使用after确保在主线程中执行，传递stop_color_recognition=False参数
+                self.app.root.after(0, lambda: self.app.stop_script(stop_color_recognition=False))
+                # 不立即设置is_running为False，让线程继续执行到下一个命令
+            elif command["type"] == "startscript":
+                # 启动脚本执行，确保在主线程中执行
+                if not self.is_running:
+                    return
+                while self.is_paused:
+                    time.sleep(0.1)
+                    if not self.is_running:
+                        return
+                if not self.is_running:
+                    return
+                self.app.log_message("执行: 启动脚本")
+                # 调用应用程序的启动脚本方法，使用after确保在主线程中执行，传递start_color_recognition=False参数
+                self.app.root.after(0, lambda: self.app.start_script(start_color_recognition=False))
+        except Exception as e:
+            # 添加错误处理，确保即使执行命令失败也不会导致应用程序崩溃
+            error_msg = f"执行命令出错: {str(e)}"
+            self.app.log_message(error_msg)
+            # 记录详细的错误信息
+            import traceback
+            self.app.log_message(f"错误详情: {traceback.format_exc()}")
+            # 继续执行其他命令，而不是终止整个脚本
+            return
 
     def pause_script(self):
         """暂停脚本执行"""
@@ -6163,8 +6183,11 @@ class ColorRecognition:
                 return False
         except Exception as e:
             self.app.log_message(f"颜色识别错误: {str(e)}")
-        
-        return False
+            # 添加详细的错误信息，帮助调试
+            import traceback
+            self.app.log_message(f"错误详情: {traceback.format_exc()}")
+            # 即使出错也返回False，确保应用程序不会崩溃
+            return False
     
 
 

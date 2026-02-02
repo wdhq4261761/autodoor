@@ -439,6 +439,25 @@ python autodoor.py
 4. macOS系统可能需要在"安全性与隐私"中允许程序控制电脑
 5. 程序会自动检测和使用内置的Tesseract引擎，无需额外安装
 
+### 对于 macOS 用户：
+1. 下载 Tesseract ：
+   - 通过 Homebrew 安装： brew install tesseract
+   - 或从官方网站下载预编译版本
+
+2. 配置 Tesseract 路径 ：
+   - 打开 AutoDoor 应用程序
+   - 进入 "基本设置" 标签页
+   - 在 "Tesseract OCR 路径" 字段中输入 Tesseract 的安装路径
+   - 点击 "保存配置" 按钮
+
+3. 授予必要的权限 ：
+   - 首次运行时，macOS 会提示授予屏幕截图权限
+   - 请点击 "允许"，确保应用程序能正常工作
+
+4. 验证权限设置 ：
+   - 进入 "系统偏好设置" > "安全性与隐私" > "隐私"
+   - 确保 AutoDoor 已被添加到 "屏幕录制" 和 "辅助功能" 列表中
+
 ## 故障排除
 
 ### 问题：Tesseract未检测到
