@@ -33,7 +33,7 @@ except ImportError:
     PYGAME_AVAILABLE = False
 
 # 全局版本号配置
-VERSION = "2.0.2"
+VERSION = "2.0.3"
 
 class VersionChecker:
     def __init__(self, app):
@@ -499,13 +499,14 @@ class AutoDoorOCR:
         if config_updated:
             self.save_config()
 
-        # 检查tesseract可用性
-        if not self.tesseract_available:
-            messagebox.showinfo("提示", "未检测到Tesseract OCR引擎，请在设置中配置Tesseract路径后使用文字识别功能！")
-            self.status_var.set("Tesseract未配置")
-
         # 设置配置监听器
         self.setup_config_listeners()
+
+        # 检查tesseract可用性，在主循环开始后显示提示
+        if not self.tesseract_available:
+            self.status_var.set("Tesseract未配置")
+            # 使用after将提示延迟到主循环开始后显示
+            self.root.after(100, lambda: messagebox.showinfo("提示", "未检测到Tesseract OCR引擎，请在设置中配置Tesseract路径后使用文字识别功能！"))
 
         # 设置快捷键绑定
         self.setup_shortcuts()
