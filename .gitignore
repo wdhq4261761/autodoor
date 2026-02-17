@@ -36,6 +36,7 @@ env/
 # Test
 /test/
 /tests/
+!tests/
 .pytest_cache/
 .coverage
 htmlcov/
