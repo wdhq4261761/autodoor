@@ -1,0 +1,25 @@
+[run]
+source = .
+omit =
+    tests/*
+    test/*
+    */__pycache__/*
+    */site-packages/*
+    core/config.py
+    core/controller.py
+    core/platform.py
+    core/proxy.py
+    core/logging.py
+    core/utils.py
+    utils/version.py
+    utils/tesseract.py
+    utils/keyboard.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod

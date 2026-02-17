@@ -281,64 +281,6 @@ class OCRModule:
             # 失败时使用区域中心
             return ((left + right) // 2, (top + bottom) // 2)
     
-    def perform_ocr_for_group(self, group, group_index):
-        """
-        为单个OCR组执行OCR识别
-        Args:
-            group: OCR组配置字典
-            group_index: OCR组索引
-        """
-        try:
-            if not self.app.is_running:
-                return
-
-            # 验证输入参数
-            valid, region, keywords_str, current_lang, click_enabled = self._validate_ocr_group_input(group, group_index)
-            if not valid:
-                return
-
-            # 验证区域坐标
-            valid, left, top, right, bottom = self._validate_region_coordinates(region, group_index)
-            if not valid:
-                return
-
-            # 截取屏幕区域
-            screenshot = self._capture_screen_region(left, top, right, bottom, group_index)
-            if not screenshot:
-                return
-
-            # 图像预处理
-            processed_image = _preprocess_image(screenshot, group_index)
-            if not processed_image:
-                return
-
-            # OCR识别
-            text = self._perform_ocr(processed_image, current_lang, group_index)
-            if not text:
-                return
-
-            self.app.logging_manager.log_message(f"识别组{group_index+1}识别结果: '{text.strip()}'")
-
-            # 检查是否包含关键词
-            lower_text = text.lower()
-            if keywords_str:
-                keywords = [keyword.strip().lower() for keyword in keywords_str.split(",") if keyword.strip()]
-                if any(keyword in lower_text for keyword in keywords):
-                    # 确定点击位置
-                    if click_enabled:
-                        click_pos = self._find_keyword_position(processed_image, keywords, current_lang, left, top, right, bottom, group_index)
-                    else:
-                        # 未启用点击，使用区域中心
-                        click_pos = ((left + right) // 2, (top + bottom) // 2)
-
-                    # 触发动作，传递文字位置
-                    self.trigger_action_for_group(group, group_index, click_enabled, click_pos)
-
-        except Exception as e:
-            self.app.logging_manager.log_message(f"识别组{group_index+1}错误: 未知错误 - {str(e)}")
-            import traceback
-            self.app.logging_manager.log_message(f"错误详情: {traceback.format_exc()}")
-    
     def perform_ocr_for_group_optimized(self, group, group_index, last_hashes, frame_counts):
         """
         为单个OCR组执行OCR识别（优化版本，使用增量截图和自适应帧率）
