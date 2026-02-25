@@ -129,12 +129,8 @@ class ColorRecognition:
             # 向量化颜色匹配（NumPy 加速 100 倍+）
             is_match = np.all((sampled_array >= lower_bound) & (sampled_array <= upper_bound), axis=2)
             match_pixels = np.sum(is_match)
-            
-            # 计算匹配比例
-            total_pixels = sampled_array.shape[0] * sampled_array.shape[1]
-            match_ratio = match_pixels / total_pixels if total_pixels > 0 else 0
-            
-            if match_ratio > 0.01:  # 匹配到像素点即可认为识别到目标颜色
+
+            if match_pixels > 0:  # 匹配到像素点即可认为识别到目标颜色
                 # 识别到目标颜色
                 self.app.logging_manager.log_message(f"✅ 识别到目标颜色")
                 return True
