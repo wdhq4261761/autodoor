@@ -27,6 +27,10 @@ KEY_NAME_MAPPING = {
     'caps_lock': 'capslock',
     'num_lock': 'numlock',
     'scroll_lock': 'scrolllock',
+    'up': 'up',
+    'down': 'down',
+    'left': 'left',
+    'right': 'right',
 }
 
 
