@@ -202,7 +202,7 @@ a = Analysis(
         'pyqt5', 'pyside6', 'wxpython', 'tkinterdnd2',
         
         # PIL扩展
-        'pillow_heif', 'PIL._imagingtk', 'PIL._tkinter_finder', 'PIL.ImageQt', 'PIL.ImageTk',
+        'pillow_heif', 'PIL._imagingtk', 'PIL._tkinter_finder', 'PIL.ImageQt',
         
         # NumPy扩展（保留核心numpy）
         'numpy.testing', 'numpy.f2py', 'numpy.distutils',

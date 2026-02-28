@@ -848,10 +848,9 @@ class ScriptExecutor(RecorderBase):
                         script_content += f"{button}{action} 1\n"
                         event_types[event["type"]] += 1
             
-            # 将生成的脚本插入到文本框
+            # 将生成的脚本插入到文本框末尾
             self.app.root.after(0, lambda:
-                (self.app.script_text.delete(1.0, self.app.script_text.index(tk.END)),
-                 self.app.script_text.insert(1.0, script_content),
+                (self.app.script_text.insert(self.app.script_text.index(tk.END), script_content),
                  self.app.script_text.see(tk.END))
             )
         except Exception as e:

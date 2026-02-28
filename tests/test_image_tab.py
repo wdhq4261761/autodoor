@@ -183,8 +183,8 @@ class TestSelectReferenceImage:
                 self._value = value
         
         return {
+            "template_image": None,
             "reference_image": None,
-            "reference_hash": None,
             "image_path_var": MockVar("未选择图像"),
             "image_preview": Mock()
         }
@@ -203,11 +203,12 @@ class TestSelectReferenceImage:
             
             with patch('tkinter.filedialog.askopenfilename', return_value=temp_path):
                 with patch('ui.image_tab.update_image_preview'):
-                    select_reference_image(mock_app, 0)
+                    with patch('cv2.imread') as mock_imread:
+                        mock_imread.return_value = Mock(shape=[100, 100, 3])
+                        select_reference_image(mock_app, 0)
             
             assert mock_group["reference_image"] == temp_path
-            assert mock_group["reference_hash"] is not None
-            mock_app.logging_manager.log_message.assert_called()
+            assert mock_group["template_image"] is not None
         finally:
             os.unlink(temp_path)
     
@@ -229,9 +230,10 @@ class TestSelectReferenceImage:
         mock_app.image_groups = [mock_group]
         
         with patch('tkinter.filedialog.askopenfilename', return_value='/nonexistent/path.png'):
-            select_reference_image(mock_app, 0)
+            with patch('tkinter.messagebox.showerror'):
+                select_reference_image(mock_app, 0)
         
-        mock_app.logging_manager.log_message.assert_called()
+        assert mock_group["template_image"] is None
 
 
 class TestUpdateImagePreview:
@@ -246,24 +248,32 @@ class TestUpdateImagePreview:
     
     def test_update_image_preview_valid(self, mock_app):
         """测试更新有效的图像预览"""
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
-            temp_path = f.name
+        import gc
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
+                temp_path = f.name
             image = Image.new('RGB', (100, 100), color='white')
             image.save(temp_path)
-        
-        try:
+            image.close()
+            
             mock_preview = Mock()
             mock_group = {"image_preview": mock_preview}
             mock_app.image_groups = [mock_group]
             
-            with patch('ui.image_tab.ImageTk.PhotoImage') as mock_photo:
-                mock_photo.return_value = Mock()
+            with patch('ui.image_tab.ctk.CTkImage') as mock_ctk_image:
+                mock_ctk_image.return_value = Mock()
                 from ui.image_tab import update_image_preview
                 update_image_preview(mock_app, 0, temp_path)
                 
                 mock_preview.configure.assert_called_once()
         finally:
-            os.unlink(temp_path)
+            gc.collect()
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except PermissionError:
+                    pass
     
     def test_update_image_preview_invalid_index(self, mock_app):
         """测试无效索引的图像预览更新"""
