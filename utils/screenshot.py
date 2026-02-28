@@ -3,6 +3,34 @@ import time
 from PIL import Image, ImageGrab
 from core.priority_lock import PriorityLock, get_module_priority
 
+try:
+    import screeninfo
+    SCREENINFO_AVAILABLE = True
+except ImportError:
+    SCREENINFO_AVAILABLE = False
+
+
+def get_virtual_screen_offset():
+    """
+    获取虚拟屏幕的偏移量
+    
+    Returns:
+        tuple: (min_x, min_y) 虚拟屏幕左上角相对于主显示器的偏移
+    """
+    if not SCREENINFO_AVAILABLE:
+        return (0, 0)
+    
+    try:
+        monitors = screeninfo.get_monitors()
+        if not monitors:
+            return (0, 0)
+        
+        min_x = min(monitor.x for monitor in monitors)
+        min_y = min(monitor.y for monitor in monitors)
+        return (min_x, min_y)
+    except Exception:
+        return (0, 0)
+
 
 class ScreenshotManager:
     """
@@ -61,7 +89,7 @@ class ScreenshotManager:
         获取区域截图（带缓存和优先级）
         
         Args:
-            region: 区域坐标 (x1, y1, x2, y2)
+            region: 区域坐标 (x1, y1, x2, y2) - 屏幕绝对坐标
             priority: 优先级
         
         Returns:
@@ -76,10 +104,13 @@ class ScreenshotManager:
         
         try:
             x1, y1, x2, y2 = region
-            left = min(x1, x2)
-            top = min(y1, y2)
-            right = max(x1, x2)
-            bottom = max(y1, y2)
+            
+            offset_x, offset_y = get_virtual_screen_offset()
+            
+            left = min(x1, x2) - offset_x
+            top = min(y1, y2) - offset_y
+            right = max(x1, x2) - offset_x
+            bottom = max(y1, y2) - offset_y
             
             return full_screenshot.crop((left, top, right, bottom))
         except Exception:

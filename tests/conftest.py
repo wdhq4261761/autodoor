@@ -39,12 +39,14 @@ def mock_app():
     app.ocr_groups = []
     app.timed_groups = []
     app.number_regions = []
+    app.image_groups = []
     
     app.status_labels = defaultdict(lambda: MagicMock())
     
     app.PRIORITIES = {
-        "number": 5,
-        "timed": 4,
+        "number": 6,
+        "timed": 5,
+        "image": 4,
         "ocr": 3,
         "color": 2,
         "script": 1
@@ -124,5 +126,30 @@ def create_mock_number_region(mock_tk_var):
             "region": region,
             "delay_min": mock_tk_var(delay_min),
             "delay_max": mock_tk_var(delay_max),
+        }
+    return _create
+
+
+@pytest.fixture
+def create_mock_image_group(mock_tk_var):
+    """创建模拟图像检测组"""
+    def _create(enabled=True, threshold="5", interval="5", pause="180",
+                key="equal", delay_min="300", delay_max="500", alarm=False,
+                click=True, region=None, reference_image=None, reference_hash=None):
+        return {
+            "enabled": mock_tk_var(enabled),
+            "threshold": mock_tk_var(threshold),
+            "interval": mock_tk_var(interval),
+            "pause": mock_tk_var(pause),
+            "key": mock_tk_var(key),
+            "delay_min": mock_tk_var(delay_min),
+            "delay_max": mock_tk_var(delay_max),
+            "alarm": mock_tk_var(alarm),
+            "click": mock_tk_var(click),
+            "region": region,
+            "reference_image": reference_image,
+            "reference_hash": reference_hash,
+            "region_var": mock_tk_var("未选择区域"),
+            "image_path_var": mock_tk_var("未选择图像"),
         }
     return _create

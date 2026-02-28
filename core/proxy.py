@@ -20,6 +20,11 @@ from ui.number_tab import (
 from ui.script_tab import create_script_tab
 from ui.home import create_home_tab
 from ui.basic_tab import create_basic_tab
+from ui.image_tab import (
+    create_image_tab, create_image_group, add_image_group,
+    delete_image_group, renumber_image_groups,
+    start_image_region_selection, select_reference_image
+)
 
 
 class OCRProxy:
@@ -195,6 +200,49 @@ class ColorProxy:
     def stop_recognition(self):
         """停止颜色识别"""
         self.app.color_recognition_manager.stop_color_recognition()
+
+
+class ImageDetectionProxy:
+    """图像检测代理类"""
+    
+    def __init__(self, app):
+        self.app = app
+    
+    def create_tab(self, parent):
+        """创建图像检测标签页"""
+        create_image_tab(self.app)
+    
+    def create_group(self, index):
+        """创建单个图像检测组"""
+        create_image_group(self.app, index)
+    
+    def add_group(self):
+        """新增图像检测组"""
+        add_image_group(self.app)
+    
+    def delete_group(self, index, confirm=True):
+        """删除图像检测组"""
+        delete_image_group(self.app, index, confirm)
+    
+    def renumber_groups(self):
+        """重新编号所有图像检测组"""
+        renumber_image_groups(self.app)
+    
+    def start_region_selection(self, index):
+        """开始选择检测区域"""
+        start_image_region_selection(self.app, index)
+    
+    def select_reference_image(self, index):
+        """选择参考图像"""
+        select_reference_image(self.app, index)
+    
+    def start_detection(self):
+        """开始图像检测"""
+        self.app.image_detection_manager.start_all_detection()
+    
+    def stop_detection(self):
+        """停止图像检测"""
+        self.app.image_detection_manager.stop_all_detection()
 
 
 class UIProxy:

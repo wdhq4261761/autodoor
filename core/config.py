@@ -141,6 +141,8 @@ class ConfigManager:
             'number_recognition': {
                 'regions': number_regions_config
             },
+            # 图像检测配置
+            'image_detection': self._get_image_detection_config(),
             # 快捷键配置 - 新增
             'shortcuts': self._get_shortcuts_config(),
             # 报警功能配置
@@ -270,6 +272,78 @@ class ConfigManager:
             if len(self.app.number_regions) == 0:
                 self.app.number.create_region(0)
     
+    def load_image_detection_config(self, config):
+        """加载图像检测配置"""
+        image_config = config.get('image_detection', {})
+        groups = self.get_config_value(image_config, 'groups', [])
+        
+        if isinstance(groups, list):
+            for group in self.app.image_groups:
+                group['frame'].destroy()
+            self.app.image_groups.clear()
+            
+            for i, group_config in enumerate(groups):
+                if isinstance(group_config, dict):
+                    self.app.image.create_group(i)
+                    if i < len(self.app.image_groups):
+                        for key, value in group_config.items():
+                            if key in self.app.image_groups[i]:
+                                if key == 'enabled':
+                                    self.app.image_groups[i][key].set(value)
+                                    group_frame = self.app.image_groups[i]['frame']
+                                    update_group_style(group_frame, value)
+                                elif key == 'region' and value is not None:
+                                    try:
+                                        region = tuple(value)
+                                        self.app.image_groups[i][key] = region
+                                        self.app.image_groups[i]['region_var'].set(f"{region[0]},{region[1]} - {region[2]},{region[3]}")
+                                    except (TypeError, ValueError):
+                                        if hasattr(self.app, 'logging_manager'):
+                                            self.app.logging_manager.log_message(f"配置文件中的图像检测区域格式错误: {value}")
+                                elif key == 'reference_image' and value is not None:
+                                    self._load_reference_image(i, value)
+                                else:
+                                    if hasattr(self.app.image_groups[i][key], 'set'):
+                                        self.app.image_groups[i][key].set(value)
+            
+            if len(self.app.image_groups) == 0:
+                self.app.image.create_group(0)
+    
+    def _load_reference_image(self, group_index, image_path):
+        """加载参考图像（模板）"""
+        import os
+        
+        try:
+            import cv2
+            CV2_AVAILABLE = True
+        except ImportError:
+            CV2_AVAILABLE = False
+        
+        if not CV2_AVAILABLE:
+            self.app.logging_manager.log_message("[图像检测] 错误: OpenCV未安装，无法加载参考图像")
+            return
+        
+        if os.path.exists(image_path):
+            try:
+                template = cv2.imread(image_path, cv2.IMREAD_COLOR)
+                if template is None:
+                    self.app.logging_manager.log_message(f"[图像检测] 无法读取图像文件: {image_path}")
+                    return
+                
+                h, w = template.shape[:2]
+                
+                self.app.image_groups[group_index]["template_image"] = template
+                self.app.image_groups[group_index]["reference_image"] = image_path
+                self.app.image_groups[group_index]["image_path_var"].set(os.path.basename(image_path))
+                
+                self.app.logging_manager.log_message(f"[图像检测] 检测组{group_index + 1}已加载模板: {image_path}")
+                self.app.logging_manager.log_message(f"[图像检测] 模板尺寸: {w}x{h}")
+                
+                from ui.image_tab import update_image_preview
+                update_image_preview(self.app, group_index, image_path)
+            except Exception as e:
+                self.app.logging_manager.log_message(f"[图像检测] 加载参考图像失败: {str(e)}")
+    
     def load_alarm_config(self, config):
         """
         加载报警配置
@@ -306,7 +380,7 @@ class ConfigManager:
         if 'home_checkboxes' in config and hasattr(self.app, 'module_check_vars'):
             home_checkboxes = config['home_checkboxes']
             if home_checkboxes:
-                for module in ['ocr', 'timed', 'number', 'script']:
+                for module in ['ocr', 'timed', 'number', 'image', 'script']:
                     if module in home_checkboxes:
                         self.app.module_check_vars[module].set(home_checkboxes[module])
     
@@ -469,6 +543,27 @@ class ConfigManager:
             'groups': ocr_groups_config
         }
     
+    def _get_image_detection_config(self):
+        """获取图像检测配置"""
+        image_groups_config = []
+        for group in self.app.image_groups:
+            image_groups_config.append({
+                'enabled': group['enabled'].get(),
+                'region': list(group['region']) if group['region'] else None,
+                'reference_image': group.get('reference_image'),
+                'threshold': group['threshold'].get(),
+                'interval': group['interval'].get(),
+                'pause': group['pause'].get(),
+                'key': group['key'].get(),
+                'delay_min': group['delay_min'].get(),
+                'delay_max': group['delay_max'].get(),
+                'alarm': group['alarm'].get(),
+                'click': group['click'].get()
+            })
+        return {
+            'groups': image_groups_config
+        }
+    
     def _get_tesseract_config(self):
         """获取Tesseract配置"""
         return {
@@ -508,6 +603,7 @@ class ConfigManager:
             'ocr': self.app.module_check_vars['ocr'].get(),
             'timed': self.app.module_check_vars['timed'].get(),
             'number': self.app.module_check_vars['number'].get(),
+            'image': self.app.module_check_vars.get('image', tk.BooleanVar(value=False)).get(),
             'script': self.app.module_check_vars.get('script', tk.BooleanVar(value=False)).get()
         }
     
@@ -635,6 +731,7 @@ class ConfigManager:
             self._load_click_config(config)
             self.load_timed_config(config)
             self.load_number_config(config)
+            self.load_image_detection_config(config)
             self.load_alarm_config(config)
             self.load_shortcuts_config(config)
             self.load_home_checkboxes_config(config)
@@ -723,6 +820,23 @@ class ConfigManager:
             setup_ocr_group_listeners(group)
 
         self.app._setup_ocr_group_listeners = setup_ocr_group_listeners
+
+        def setup_image_group_listeners(group):
+            group["enabled"].trace_add("write", immediate_save)
+            group["threshold"].trace_add("write", immediate_save)
+            group["interval"].trace_add("write", immediate_save)
+            group["pause"].trace_add("write", immediate_save)
+            if hasattr(group.get("key"), "trace_add"):
+                group["key"].trace_add("write", immediate_save)
+            group["delay_min"].trace_add("write", immediate_save)
+            group["delay_max"].trace_add("write", immediate_save)
+            group["alarm"].trace_add("write", immediate_save)
+            group["click"].trace_add("write", immediate_save)
+
+        for group in self.app.image_groups:
+            setup_image_group_listeners(group)
+
+        self.app._setup_image_group_listeners = setup_image_group_listeners
 
         if hasattr(self.app, 'module_check_vars'):
             for module, var in self.app.module_check_vars.items():

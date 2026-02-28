@@ -16,6 +16,7 @@ class Theme:
         'error': '#EF4444',
         'error_light': '#FEE2E2',
         'info': '#3B82F6',
+        'info_hover': '#2563EB',
         'info_light': '#DBEAFE',
         
         'text_primary': '#1F2937',

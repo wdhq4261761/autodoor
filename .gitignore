@@ -67,6 +67,7 @@ autodoor_config.json
 # Backup files
 *.bak
 /save/
+/image/
 
 # Documentation (exclude generated docs, keep README)
 /md/

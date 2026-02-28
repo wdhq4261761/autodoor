@@ -68,6 +68,10 @@ class ModuleController:
             self.app.number_module.start_number_recognition()
             self._update_indicator("number", True)
 
+        if self.app.module_check_vars["image"].get():
+            self.app.image_detection_manager.start_all_detection()
+            self._update_indicator("image", True)
+
         if self.app.module_check_vars["script"].get():
             self.app.script.start()
             self._update_indicator("script", True)
@@ -90,6 +94,9 @@ class ModuleController:
 
         self.app.number_module.stop_number_recognition()
         self._update_indicator("number", False)
+        
+        self.app.image_detection_manager.stop_all_detection()
+        self._update_indicator("image", False)
         
         self.app.script.stop(stop_color_recognition=False)
         self._update_indicator("script", False)

@@ -12,6 +12,7 @@ from ui.timed_tab import create_timed_tab
 from ui.number_tab import create_number_tab
 from ui.script_tab import create_script_tab
 from ui.basic_tab import create_basic_tab
+from ui.image_tab import create_image_tab
 from core.config import ConfigManager
 from core.platform import PlatformAdapter
 from core.threading import ThreadManager
@@ -19,7 +20,7 @@ from core.events import EventManager
 from core.logging import LoggingManager
 from core.utils import exit_program
 from core.controller import ModuleController
-from core.proxy import OCRProxy, TimedProxy, NumberProxy, ScriptProxy, ColorProxy, UIProxy
+from core.proxy import OCRProxy, TimedProxy, NumberProxy, ScriptProxy, ColorProxy, ImageDetectionProxy, UIProxy
 from input.permissions import PermissionManager
 from input.controller import InputController
 from input.keyboard import setup_shortcuts
@@ -31,6 +32,7 @@ from modules.number import NumberModule
 from modules.alarm import AlarmModule
 from modules.script import ScriptModule
 from modules.color import ColorRecognitionManager
+from modules.image import ImageDetectionManager
 
 VERSION = "2.1.3"
 
@@ -74,8 +76,9 @@ class AutoDoorOCR:
         self.number_stop_events = {}
 
         self.PRIORITIES = {
-            "number": 5,
-            "timed": 4,
+            "number": 6,
+            "timed": 5,
+            "image": 4,
             "ocr": 3,
             "color": 2,
             "script": 1
@@ -94,6 +97,8 @@ class AutoDoorOCR:
         self.ocr_delay_max = None
         self.ocr_groups = []
         self.current_ocr_region_index = None
+        self.image_groups = []
+        self.current_image_region_index = None
         
         self._current_page = 'home'
         self.nav_items = {}
@@ -140,6 +145,7 @@ class AutoDoorOCR:
         self.number = NumberProxy(self)
         self.script = ScriptProxy(self)
         self.color = ColorProxy(self)
+        self.image = ImageDetectionProxy(self)
         self.ui = UIProxy(self)
 
     def _init_ui(self):
@@ -253,6 +259,7 @@ class AutoDoorOCR:
             ('ocr', '📝', '文字识别'),
             ('timed', '⏱', '定时功能'),
             ('number', '🔢', '数字识别'),
+            ('image', '🖼', '图像检测'),
             ('script', '📜', '脚本运行'),
             ('settings', '⚙', '基本设置')
         ]
@@ -322,6 +329,7 @@ class AutoDoorOCR:
         create_ocr_tab(self)
         create_timed_tab(self)
         create_number_tab(self)
+        create_image_tab(self)
         create_script_tab(self)
         create_basic_tab(self)
         
@@ -386,10 +394,12 @@ class AutoDoorOCR:
         self.script_module = ScriptModule(self)
         self.tesseract_manager = TesseractManager(self)
         self.color_recognition_manager = ColorRecognitionManager(self)
+        self.image_detection_manager = ImageDetectionManager(self)
         self.MODULES = {
             "ocr": {"threads": "ocr_threads", "stop_func": "ocr.stop_monitoring", "label": "文字识别"},
             "timed": {"threads": "timed_threads", "stop_func": "timed.stop_tasks", "label": "定时功能"},
             "number": {"threads": "number_threads", "stop_func": "number.stop_recognition", "label": "数字识别"},
+            "image": {"threads": "image_threads", "stop_func": "image.stop_detection", "label": "图像检测"},
             "color": {"threads": "color_threads", "stop_func": "color.stop_recognition", "label": "颜色识别"}
         }
         self.module_controller = ModuleController(self)

@@ -36,6 +36,7 @@ def create_home_tab(app):
         "ocr": tk.StringVar(value="文字识别: 未运行"),
         "timed": tk.StringVar(value="定时功能: 未运行"),
         "number": tk.StringVar(value="数字识别: 未运行"),
+        "image": tk.StringVar(value="图像检测: 未运行"),
         "script": tk.StringVar(value="脚本运行: 未运行")
     }
     
@@ -43,6 +44,7 @@ def create_home_tab(app):
         "ocr": tk.BooleanVar(value=False),
         "timed": tk.BooleanVar(value=False),
         "number": tk.BooleanVar(value=False),
+        "image": tk.BooleanVar(value=False),
         "script": tk.BooleanVar(value=False)
     }
     
@@ -50,6 +52,7 @@ def create_home_tab(app):
         "ocr": "文字识别",
         "timed": "定时功能",
         "number": "数字识别",
+        "image": "图像检测",
         "script": "脚本运行"
     }
     

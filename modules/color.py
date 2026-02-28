@@ -44,31 +44,22 @@ class ColorRecognition:
             self.is_running = True
             
             while self.is_running:
-                # 检查是否需要暂停（处理事件插队）
+                time.sleep(self.interval)
+                
                 if hasattr(self.app, 'event_queue') and not self.app.event_queue.empty():
-                    # 如果队列非空，等待一段时间让事件处理线程处理事件
-                    time.sleep(0.1)
                     continue
                 
-                # 执行颜色识别
                 if self.recognize_color():
-                    # 识别到目标颜色，执行命令
                     self.execute_commands()
-                    # 执行后暂停一段时间
-                    time.sleep(5)  # 避免频繁执行
-                
-                # 检查间隔
-                time.sleep(self.interval)
+                    time.sleep(self.interval)
             
             self.is_running = False
             self.app.status_var.set("颜色识别已停止")
             
-            # 更新UI状态
             self.app.root.after(0, lambda:
                 (self.app.status_var.set("颜色识别已停止"),)
             )
         
-        # 启动识别线程
         self.recognition_thread = threading.Thread(target=recognize, daemon=True)
         self.recognition_thread.start()
 
