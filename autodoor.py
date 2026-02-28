@@ -34,7 +34,7 @@ from modules.script import ScriptModule
 from modules.color import ColorRecognitionManager
 from modules.image import ImageDetectionManager
 
-VERSION = "2.1.3"
+VERSION = "2.2.0"
 
 
 class AutoDoorOCR:
