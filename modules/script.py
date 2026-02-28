@@ -810,11 +810,8 @@ class ScriptExecutor(RecorderBase):
               and time.time() - start < 0.5:
             time.sleep(0.01)
         
-        # 生成录制脚本
-        try:
-            self.generate_recorded_script()
-        except Exception as e:
-            pass
+        # 脚本生成已在录制线程的 finally 块中处理
+        # 此处不再重复生成脚本
         
         # 播放停止运行音效
         try:
