@@ -328,9 +328,8 @@ def get_app_dir():
 
 
 def crop_reference_image(app, index):
-    """裁剪参考图像"""
-    from tkinter import messagebox, filedialog
-    import os
+    """截取屏幕区域作为参考图像"""
+    from tkinter import messagebox
     
     try:
         import cv2
@@ -345,25 +344,9 @@ def crop_reference_image(app, index):
     if index >= len(app.image_groups):
         return
     
-    group = app.image_groups[index]
+    app.logging_manager.log_message("[图像截图] 请在屏幕上选择要截取的区域...")
     
-    source_image = group.get("reference_image")
-    if not source_image or not os.path.exists(source_image):
-        file_path = filedialog.askopenfilename(
-            title="选择要裁剪的图像",
-            filetypes=[
-                ("图像文件", "*.png;*.jpg;*.jpeg;*.bmp;*.gif"),
-                ("所有文件", "*.*")
-            ]
-        )
-        if not file_path:
-            return
-        source_image = file_path
-    
-    app.logging_manager.log_message(f"[图像裁剪] 开始裁剪图像: {source_image}")
-    app.logging_manager.log_message("[图像裁剪] 请在屏幕上选择要裁剪的区域...")
-    
-    app._crop_source_image = source_image
+    app._crop_source_image = None
     app._crop_group_index = index
     
     from utils.region import _start_selection
@@ -371,31 +354,26 @@ def crop_reference_image(app, index):
 
 
 def save_cropped_image(app, region):
-    """保存裁剪后的图像"""
+    """保存截取的屏幕区域图像"""
     from tkinter import messagebox
     import os
     import time
     
-    source_image = getattr(app, '_crop_source_image', None)
     group_index = getattr(app, '_crop_group_index', None)
     
     if group_index is None:
-        app.logging_manager.log_message("[图像裁剪] 错误: 未找到裁剪组索引")
         return
     
     try:
         import cv2
         import numpy as np
-        from PIL import Image, ImageGrab
-        
-        app.logging_manager.log_message(f"[图像裁剪] 裁剪区域: {region}")
+        from PIL import Image
         
         app_dir = get_app_dir()
         image_dir = os.path.join(app_dir, "image")
         
         if not os.path.exists(image_dir):
             os.makedirs(image_dir)
-            app.logging_manager.log_message(f"[图像裁剪] 创建图像目录: {image_dir}")
         
         app.root.update()
         import time as t
@@ -406,22 +384,20 @@ def save_cropped_image(app, region):
         screenshot = screenshot_manager.get_region_screenshot(region)
         
         if not screenshot:
-            messagebox.showerror("错误", "无法获取裁剪区域截图")
+            messagebox.showerror("错误", "无法获取截图区域")
             return
         
         crop_w, crop_h = screenshot.size
-        app.logging_manager.log_message(f"[图像裁剪] 裁剪后尺寸: {crop_w}x{crop_h}")
         
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        filename = f"crop_{timestamp}.png"
+        filename = f"screenshot_{timestamp}.png"
         save_path = os.path.join(image_dir, filename)
         
         screenshot.save(save_path)
-        app.logging_manager.log_message(f"[图像裁剪] 已保存裁剪图像: {save_path}")
         
         template = cv2.imread(save_path, cv2.IMREAD_COLOR)
         if template is None:
-            messagebox.showerror("错误", f"无法读取裁剪后的图像: {save_path}")
+            messagebox.showerror("错误", f"无法读取截图: {save_path}")
             return
         
         group = app.image_groups[group_index]
@@ -430,20 +406,16 @@ def save_cropped_image(app, region):
         group["image_path_var"].set(os.path.basename(save_path))
         
         h, w = template.shape[:2]
-        app.logging_manager.log_message(f"[图像裁剪] 模板尺寸: {w}x{h}")
         
         update_image_preview(app, group_index, save_path)
         
         if hasattr(app, 'config_manager'):
             app.config_manager.defer_save_config()
         
-        messagebox.showinfo("成功", f"图像已裁剪并保存到:\n{save_path}")
+        messagebox.showinfo("成功", f"截图已保存到:\n{save_path}")
         
     except Exception as e:
-        app.logging_manager.log_message(f"[图像裁剪] 裁剪失败: {str(e)}")
-        import traceback
-        app.logging_manager.log_message(f"[图像裁剪] 错误详情: {traceback.format_exc()}")
-        messagebox.showerror("错误", f"裁剪失败: {str(e)}")
+        messagebox.showerror("错误", f"截图失败: {str(e)}")
     finally:
         app._crop_source_image = None
         app._crop_group_index = None

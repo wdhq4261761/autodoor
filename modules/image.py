@@ -144,9 +144,9 @@ class ImageDetection:
             result = cv2.matchTemplate(screenshot_cv, self.template_image, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
             
-            self.app.logging_manager.log_message(f"[图像检测] 匹配度: {max_val:.2%}")
-            
             if max_val >= self.threshold:
+                self.app.logging_manager.log_message(f"图像匹配成功：匹配度: {max_val:.2%}")
+                
                 center_x = max_loc[0] + template_w // 2
                 center_y = max_loc[1] + template_h // 2
                 
@@ -157,6 +157,7 @@ class ImageDetection:
                 
                 return (abs_x, abs_y, max_val)
             else:
+                self.app.logging_manager.log_message(f"图像匹配失败：匹配度: {max_val:.2%}")
                 return None
                 
         except Exception:
