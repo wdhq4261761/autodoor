@@ -80,3 +80,6 @@ autodoor_config.json
 
 # Workflow (keep main workflow)
 /.workflow/
+
+# Git worktrees
+.worktrees/
