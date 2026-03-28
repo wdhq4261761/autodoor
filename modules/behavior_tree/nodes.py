@@ -507,11 +507,4 @@ NODE_TYPE_MAP: Dict[str, type] = {
     "DecoratorNode": DecoratorNode,
     "ConditionNode": ConditionNode,
     "ActionNode": ActionNode,
-    "OCRConditionNode": OCRConditionNode,
-    "ImageConditionNode": ImageConditionNode,
-    "ColorConditionNode": ColorConditionNode,
-    "NumberConditionNode": NumberConditionNode,
-    "KeyPressNode": KeyPressNode,
-    "MouseClickNode": MouseClickNode,
-    "DelayNode": DelayNode,
 }

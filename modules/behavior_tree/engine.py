@@ -14,6 +14,29 @@ from .nodes import Node, NodeStatus, NODE_TYPE_MAP
 from .context import ExecutionContext
 from .blackboard import Blackboard
 
+
+def register_adapters() -> None:
+    """注册所有适配器节点类型"""
+    try:
+        from modules.bt_adapters.ocr_adapter import OCRConditionNode
+        from modules.bt_adapters.image_adapter import ImageConditionNode
+        from modules.bt_adapters.color_adapter import ColorConditionNode
+        from modules.bt_adapters.number_adapter import NumberConditionNode
+        from modules.bt_adapters.action_adapters import KeyPressNode, MouseClickNode, DelayNode
+        
+        NODE_TYPE_MAP["OCRConditionNode"] = OCRConditionNode
+        NODE_TYPE_MAP["ImageConditionNode"] = ImageConditionNode
+        NODE_TYPE_MAP["ColorConditionNode"] = ColorConditionNode
+        NODE_TYPE_MAP["NumberConditionNode"] = NumberConditionNode
+        NODE_TYPE_MAP["KeyPressNode"] = KeyPressNode
+        NODE_TYPE_MAP["MouseClickNode"] = MouseClickNode
+        NODE_TYPE_MAP["DelayNode"] = DelayNode
+    except ImportError:
+        pass
+
+
+register_adapters()
+
 if TYPE_CHECKING:
     from autodoor import AutoDoorOCR
 
