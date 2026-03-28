@@ -70,7 +70,7 @@ class EditorToolbar(ctk.CTkFrame):
             width=60,
             height=28,
             fg_color=Theme.COLORS["success"],
-            hover_color=Theme.COLORS["success_hover"],
+            hover_color=Theme.COLORS["primary_hover"],
             command=self._on_save_click
         ).pack(side="left", padx=2)
         
@@ -83,7 +83,7 @@ class EditorToolbar(ctk.CTkFrame):
             width=60,
             height=28,
             fg_color=Theme.COLORS["success"],
-            hover_color=Theme.COLORS["success_hover"],
+            hover_color=Theme.COLORS["primary_hover"],
             command=self._on_run_click
         )
         self.run_btn.pack(side="left", padx=2)
@@ -94,8 +94,8 @@ class EditorToolbar(ctk.CTkFrame):
             font=Theme.get_font("xs"),
             width=60,
             height=28,
-            fg_color=Theme.COLORS["danger"],
-            hover_color=Theme.COLORS["danger_hover"],
+            fg_color=Theme.COLORS["error"],
+            hover_color=Theme.COLORS["error"],
             command=self._on_stop_click,
             state="disabled"
         )
