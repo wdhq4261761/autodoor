@@ -1,7 +1,9 @@
 """
 代理类模块，按功能分组管理代理方法
 """
+
 import tkinter as tk
+from typing import Optional, Dict, Any
 
 from ui.ocr_tab import (
     create_ocr_tab, create_ocr_group, add_ocr_group,
@@ -318,3 +320,78 @@ class BackgroundProxy:
     def stop_monitoring(self):
         """停止后台监控"""
         self.app.background_manager.stop_all_groups()
+
+
+class BehaviorTreeProxy:
+    """行为树代理类"""
+    
+    def __init__(self, app):
+        self.app = app
+        self.engine = None
+        self.editor = None
+    
+    def create_tab(self, parent):
+        """创建行为树标签页"""
+        from ui.bt_editor import BehaviorTreeEditor
+        self.editor = BehaviorTreeEditor(parent, self.app)
+        self.editor.pack(fill="both", expand=True)
+    
+    def load_tree(self, file_path: str) -> bool:
+        """加载行为树"""
+        from modules.behavior_tree import BehaviorTreeEngine
+        
+        if not self.engine:
+            self.engine = BehaviorTreeEngine(self.app)
+        
+        return self.engine.load_from_file(file_path)
+    
+    def save_tree(self, file_path: Optional[str] = None) -> bool:
+        """保存行为树"""
+        if not self.engine:
+            return False
+        
+        return self.engine.save_to_file(file_path)
+    
+    def start_execution(self) -> bool:
+        """开始执行"""
+        if not self.engine or not self.editor:
+            return False
+        
+        tree_data = self.editor.canvas.get_tree_data()
+        if not tree_data.get("root_node"):
+            return False
+        
+        from modules.behavior_tree import BehaviorTreeEngine
+        
+        self.engine = BehaviorTreeEngine(self.app)
+        self.engine.load_tree(tree_data)
+        self.engine.start()
+        return True
+    
+    def stop_execution(self) -> None:
+        """停止执行"""
+        if self.engine:
+            self.engine.stop()
+    
+    def pause_execution(self) -> None:
+        """暂停执行"""
+        if self.engine:
+            self.engine.pause()
+    
+    def resume_execution(self) -> None:
+        """恢复执行"""
+        if self.engine:
+            self.engine.resume()
+    
+    def get_status(self) -> Dict[str, Any]:
+        """获取执行状态"""
+        if self.engine:
+            return self.engine.get_status()
+        return {
+            "is_running": False,
+            "is_paused": False,
+            "tree_name": "",
+            "tick_count": 0,
+            "elapsed_time": 0,
+            "file_path": None,
+        }

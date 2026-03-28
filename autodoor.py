@@ -19,7 +19,7 @@ from core.events import EventManager
 from core.logging import LoggingManager
 from core.utils import exit_program
 from core.controller import ModuleController
-from core.proxy import OCRProxy, TimedProxy, NumberProxy, ScriptProxy, ColorProxy, ImageDetectionProxy, UIProxy, BackgroundProxy
+from core.proxy import OCRProxy, TimedProxy, NumberProxy, ScriptProxy, ColorProxy, ImageDetectionProxy, UIProxy, BackgroundProxy, BehaviorTreeProxy, BehaviorTreeProxy
 from input.permissions import PermissionManager
 from input.controller import InputController
 from input.keyboard import setup_shortcuts
@@ -140,6 +140,7 @@ class AutoDoorOCR:
         self.image = ImageDetectionProxy(self)
         self.ui = UIProxy(self)
         self.background = BackgroundProxy(self)
+        self.behavior_tree = BehaviorTreeProxy(self)
 
     def _init_ui(self):
         init_theme()
@@ -275,6 +276,7 @@ class AutoDoorOCR:
             ('image', '🖼', '图像检测'),
             ('background', '🖥', '后台监控'),
             ('script', '📜', '脚本运行'),
+            ('behavior_tree', '🌳', '行为树'),
             ('settings', '⚙', '基本设置')
         ]
         
