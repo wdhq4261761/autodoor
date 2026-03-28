@@ -3,6 +3,7 @@
 """
 
 import tkinter as tk
+import customtkinter as ctk
 from typing import Optional, Dict, Any
 
 from ui.ocr_tab import (
@@ -333,7 +334,12 @@ class BehaviorTreeProxy:
     def create_tab(self, parent):
         """创建行为树标签页"""
         from ui.bt_editor import BehaviorTreeEditor
-        self.editor = BehaviorTreeEditor(parent, self.app)
+        
+        page = ctk.CTkFrame(parent, fg_color="transparent")
+        page.pack(fill="both", expand=True)
+        self.app.pages["behavior_tree"] = page
+        
+        self.editor = BehaviorTreeEditor(page, self.app)
         self.editor.pack(fill="both", expand=True)
     
     def load_tree(self, file_path: str) -> bool:
