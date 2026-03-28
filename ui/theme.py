@@ -33,6 +33,45 @@ class Theme:
         'footer_bg': '#F9FAFB',
     }
     
+    DARK_COLORS = {
+        'primary': '#3B82F6',
+        'primary_hover': '#60A5FA',
+        'secondary': '#818CF8',
+        'success': '#22C55E',
+        'success_light': '#166534',
+        'warning': '#F59E0B',
+        'warning_light': '#92400E',
+        'error': '#EF4444',
+        'error_light': '#991B1B',
+        'info': '#3B82F6',
+        'info_hover': '#60A5FA',
+        'info_light': '#1E3A8A',
+        
+        'text_primary': '#F9FAFB',
+        'text_secondary': '#D1D5DB',
+        'text_muted': '#9CA3AF',
+        
+        'bg_primary': '#0F172A',
+        'bg_secondary': '#1E293B',
+        'bg_tertiary': '#334155',
+        'bg_elevated': '#1E293B',
+        
+        'border': '#334155',
+        'border_light': '#475569',
+        
+        'card_bg': '#1E293B',
+        'sidebar_bg': '#0F172A',
+        'header_bg': '#1E293B',
+        'footer_bg': '#0F172A',
+        
+        'canvas_bg': '#0F172A',
+        'canvas_grid': '#1E293B',
+        'node_bg': '#1E293B',
+        'node_border': '#475569',
+        'node_selected': '#3B82F6',
+        'connection_line': '#475569',
+    }
+    
     FONTS = {
         'family': 'Microsoft YaHei',
         'sizes': {
@@ -47,13 +86,26 @@ class Theme:
     }
     
     DIMENSIONS = {
-        'sidebar_width': 180,
-        'header_height': 44,
-        'footer_height': 28,
+        'sidebar_width': 200,
+        'property_width': 260,
+        'header_height': 48,
+        'footer_height': 32,
         'card_corner_radius': 8,
         'button_corner_radius': 6,
-        'input_height': 28,
-        'button_height': 32,
+        'input_height': 32,
+        'button_height': 36,
+        'spacing_xs': 4,
+        'spacing_sm': 8,
+        'spacing_md': 12,
+        'spacing_lg': 16,
+        'spacing_xl': 24,
+    }
+    
+    NODE_COLORS = {
+        'composite': {'bg': '#1E40AF', 'hover': '#1E3A8A', 'text': '#FFFFFF'},
+        'decorator': {'bg': '#B45309', 'hover': '#92400E', 'text': '#FFFFFF'},
+        'condition': {'bg': '#BE185D', 'hover': '#9D174D', 'text': '#FFFFFF'},
+        'action': {'bg': '#047857', 'hover': '#065F46', 'text': '#FFFFFF'},
     }
     
     @classmethod
@@ -63,20 +115,11 @@ class Theme:
     
     @classmethod
     def get_dark_colors(cls):
-        return {
-            'text_primary': '#F9FAFB',
-            'text_secondary': '#D1D5DB',
-            'text_muted': '#9CA3AF',
-            'bg_primary': '#1F2937',
-            'bg_secondary': '#111827',
-            'bg_tertiary': '#374151',
-            'border': '#374151',
-            'border_light': '#4B5563',
-            'card_bg': '#1F2937',
-            'sidebar_bg': '#111827',
-            'header_bg': '#1F2937',
-            'footer_bg': '#111827',
-        }
+        return cls.DARK_COLORS
+    
+    @classmethod
+    def get_node_color(cls, category: str) -> dict:
+        return cls.NODE_COLORS.get(category, cls.NODE_COLORS['action'])
 
 
 def init_theme():

@@ -22,15 +22,24 @@ def register_adapters() -> None:
         from modules.bt_adapters.image_adapter import ImageConditionNode
         from modules.bt_adapters.color_adapter import ColorConditionNode
         from modules.bt_adapters.number_adapter import NumberConditionNode
-        from modules.bt_adapters.action_adapters import KeyPressNode, MouseClickNode, DelayNode
+        from modules.bt_adapters.variable_adapter import VariableConditionNode
+        from modules.bt_adapters.action_adapters import (
+            KeyPressNode, MouseClickNode, MouseMoveNode,
+            DelayNode, SetVariableNode, ScriptNode
+        )
         
         NODE_TYPE_MAP["OCRConditionNode"] = OCRConditionNode
         NODE_TYPE_MAP["ImageConditionNode"] = ImageConditionNode
         NODE_TYPE_MAP["ColorConditionNode"] = ColorConditionNode
         NODE_TYPE_MAP["NumberConditionNode"] = NumberConditionNode
+        NODE_TYPE_MAP["VariableConditionNode"] = VariableConditionNode
         NODE_TYPE_MAP["KeyPressNode"] = KeyPressNode
         NODE_TYPE_MAP["MouseClickNode"] = MouseClickNode
+        NODE_TYPE_MAP["MouseMoveNode"] = MouseMoveNode
         NODE_TYPE_MAP["DelayNode"] = DelayNode
+        NODE_TYPE_MAP["SetVariableNode"] = SetVariableNode
+        NODE_TYPE_MAP["ScriptNode"] = ScriptNode
+        NODE_TYPE_MAP["CodeNode"] = CodeNode
     except ImportError:
         pass
 

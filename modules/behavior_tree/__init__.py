@@ -4,8 +4,9 @@
 提供完整的行为树执行能力，支持：
 - 组合节点：Sequence, Selector, Parallel
 - 装饰节点：Inverter, Repeater, Retry, Timeout
-- 条件节点：OCR, Image, Color, Number
-- 动作节点：KeyPress, MouseClick, Delay
+- 条件节点：OCR, Image, Color, Number, Variable
+- 动作节点：KeyPress, MouseClick, MouseMove, Delay, SetVariable, Script
+- 序列化：JSON, YAML, TEXT 格式
 """
 
 from .nodes import (
@@ -27,6 +28,7 @@ from .nodes import (
 from .blackboard import Blackboard
 from .context import ExecutionContext
 from .engine import BehaviorTreeEngine
+from .serializer import BehaviorTreeSerializer
 
 __all__ = [
     "Node",
@@ -46,4 +48,5 @@ __all__ = [
     "Blackboard",
     "ExecutionContext",
     "BehaviorTreeEngine",
+    "BehaviorTreeSerializer",
 ]

@@ -1,13 +1,14 @@
 """
 属性面板
 
-用于编辑节点属性
+用于编辑节点属性，支持区域选择、文件浏览、按键监听等功能
 """
 
 from typing import Any, Callable, Dict, Optional, List
 
 import customtkinter as ctk
 import tkinter as tk
+from tkinter import filedialog, messagebox
 
 from ui.theme import Theme
 
@@ -20,7 +21,7 @@ NODE_CONFIG_SCHEMAS = {
     ],
     "ImageConditionNode": [
         {"key": "region", "label": "检测区域", "type": "region"},
-        {"key": "template_path", "label": "模板路径", "type": "file"},
+        {"key": "template_path", "label": "模板路径", "type": "file", "filetypes": [("图像文件", "*.png;*.jpg;*.jpeg;*.bmp"), ("所有文件", "*.*")]},
         {"key": "threshold", "label": "匹配阈值", "type": "number", "min": 0, "max": 1, "step": 0.1},
     ],
     "ColorConditionNode": [
@@ -33,6 +34,11 @@ NODE_CONFIG_SCHEMAS = {
         {"key": "compare_mode", "label": "比较模式", "type": "select", "options": ["less_than", "less_equal", "greater_than", "greater_equal", "equal", "not_equal"]},
         {"key": "threshold", "label": "比较值", "type": "number"},
     ],
+    "VariableConditionNode": [
+        {"key": "variable_name", "label": "变量名", "type": "text"},
+        {"key": "operator", "label": "运算符", "type": "select", "options": ["==", "!=", ">", "<", ">=", "<=", "exists", "not_exists", "contains", "not_contains"]},
+        {"key": "compare_value", "label": "比较值", "type": "text"},
+    ],
     "KeyPressNode": [
         {"key": "key", "label": "按键", "type": "key"},
         {"key": "action", "label": "动作", "type": "select", "options": ["press", "down", "up"]},
@@ -43,8 +49,27 @@ NODE_CONFIG_SCHEMAS = {
         {"key": "position", "label": "位置", "type": "position"},
         {"key": "use_blackboard", "label": "使用黑板位置", "type": "bool"},
     ],
+    "MouseMoveNode": [
+        {"key": "position", "label": "位置", "type": "position"},
+        {"key": "use_blackboard", "label": "使用黑板位置", "type": "bool"},
+        {"key": "position_key", "label": "黑板变量名", "type": "text"},
+        {"key": "relative", "label": "相对移动", "type": "bool"},
+    ],
     "DelayNode": [
         {"key": "duration_ms", "label": "延时时长(ms)", "type": "number"},
+    ],
+    "SetVariableNode": [
+        {"key": "variable_name", "label": "变量名", "type": "text"},
+        {"key": "operation", "label": "操作", "type": "select", "options": ["set", "increment", "delete", "clear"]},
+        {"key": "value", "label": "值", "type": "text"},
+    ],
+    "ScriptNode": [
+        {"key": "script_path", "label": "脚本路径", "type": "file", "filetypes": [("脚本文件", "*.txt"), ("所有文件", "*.*")]},
+        {"key": "loop", "label": "循环执行", "type": "bool"},
+    ],
+    "CodeNode": [
+        {"key": "code_path", "label": "代码路径", "type": "file", "filetypes": [("Python脚本", "*.py"), ("批处理", "*.bat;*.cmd"), ("PowerShell", "*.ps1"), ("所有文件", "*.*")]},
+        {"key": "code_type", "label": "代码类型", "type": "select", "options": ["auto", "python", "batch", "powershell"]},
     ],
     "RepeaterNode": [
         {"key": "count", "label": "重复次数(-1无限)", "type": "number"},
@@ -61,49 +86,730 @@ NODE_CONFIG_SCHEMAS = {
 }
 
 
+class FieldWidget(ctk.CTkFrame):
+    """字段组件基类"""
+    
+    def __init__(self, master, label: str, key: str, on_change: Callable, **kwargs):
+        super().__init__(master, **kwargs)
+        self.label = label
+        self.key = key
+        self.on_change = on_change
+        
+        self._dark_colors = Theme.get_dark_colors()
+        self.configure(fg_color="transparent")
+        
+        self._create_label()
+    
+    def _create_label(self):
+        """创建标签"""
+        self.label_widget = ctk.CTkLabel(
+            self,
+            text=self.label,
+            font=Theme.get_font('sm'),
+            text_color=self._dark_colors['text_secondary'],
+            anchor="w"
+        )
+        self.label_widget.pack(fill="x", pady=(Theme.DIMENSIONS['spacing_sm'], Theme.DIMENSIONS['spacing_xs']))
+    
+    def set_value(self, value: Any):
+        """设置值"""
+        pass
+    
+    def get_value(self) -> Any:
+        """获取值"""
+        return None
+
+
+class TextField(FieldWidget):
+    """文本字段"""
+    
+    def __init__(self, master, label: str, key: str, on_change: Callable, **kwargs):
+        super().__init__(master, label, key, on_change, **kwargs)
+        self._create_widget()
+    
+    def _create_widget(self):
+        self.var = tk.StringVar()
+        self.entry = ctk.CTkEntry(
+            self,
+            textvariable=self.var,
+            font=Theme.get_font('sm'),
+            height=Theme.DIMENSIONS['input_height'],
+            fg_color=self._dark_colors['bg_tertiary'],
+            border_color=self._dark_colors['border'],
+            text_color=self._dark_colors['text_primary'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius']
+        )
+        self.entry.pack(fill="x")
+        self.entry.bind("<FocusOut>", lambda e: self.on_change(self.key, self.var.get()))
+    
+    def set_value(self, value: Any):
+        self.var.set(str(value or ""))
+    
+    def get_value(self) -> Any:
+        return self.var.get()
+
+
+class NumberField(FieldWidget):
+    """数字字段"""
+    
+    def __init__(self, master, label: str, key: str, on_change: Callable, 
+                 min_val: float = None, max_val: float = None, step: float = 1, **kwargs):
+        self.min_val = min_val
+        self.max_val = max_val
+        self.step = step
+        super().__init__(master, label, key, on_change, **kwargs)
+        self._create_widget()
+    
+    def _create_widget(self):
+        self.var = tk.StringVar()
+        self.entry = ctk.CTkEntry(
+            self,
+            textvariable=self.var,
+            font=Theme.get_font('sm'),
+            height=Theme.DIMENSIONS['input_height'],
+            fg_color=self._dark_colors['bg_tertiary'],
+            border_color=self._dark_colors['border'],
+            text_color=self._dark_colors['text_primary'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius']
+        )
+        self.entry.pack(fill="x")
+        self.entry.bind("<FocusOut>", lambda e: self._on_change())
+    
+    def _on_change(self):
+        try:
+            value = float(self.var.get()) if "." in self.var.get() else int(self.var.get())
+            if self.min_val is not None:
+                value = max(self.min_val, value)
+            if self.max_val is not None:
+                value = min(self.max_val, value)
+            self.on_change(self.key, value)
+        except ValueError:
+            pass
+    
+    def set_value(self, value: Any):
+        self.var.set(str(value if value is not None else (self.min_val or 0)))
+    
+    def get_value(self) -> Any:
+        try:
+            return float(self.var.get()) if "." in self.var.get() else int(self.var.get())
+        except ValueError:
+            return 0
+
+
+class SelectField(FieldWidget):
+    """选择字段"""
+    
+    def __init__(self, master, label: str, key: str, on_change: Callable, options: List[str] = None, **kwargs):
+        self.options = options or []
+        super().__init__(master, label, key, on_change, **kwargs)
+        self._create_widget()
+    
+    def _create_widget(self):
+        self.var = tk.StringVar(value=self.options[0] if self.options else "")
+        self.menu = ctk.CTkOptionMenu(
+            self,
+            variable=self.var,
+            values=self.options,
+            font=Theme.get_font('sm'),
+            height=Theme.DIMENSIONS['input_height'],
+            fg_color=self._dark_colors['bg_tertiary'],
+            button_color=self._dark_colors['border'],
+            button_hover_color=self._dark_colors['node_selected'],
+            text_color=self._dark_colors['text_primary'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius']
+        )
+        self.menu.pack(fill="x")
+        self.menu.bind("<<ComboboxSelected>>", lambda e: self.on_change(self.key, self.var.get()))
+    
+    def set_value(self, value: Any):
+        if value in self.options:
+            self.var.set(str(value))
+    
+    def get_value(self) -> Any:
+        return self.var.get()
+
+
+class BoolField(FieldWidget):
+    """布尔字段"""
+    
+    def __init__(self, master, label: str, key: str, on_change: Callable, **kwargs):
+        super().__init__(master, label, key, on_change, **kwargs)
+        self._create_widget()
+    
+    def _create_widget(self):
+        self.var = tk.BooleanVar(value=True)
+        self.switch = ctk.CTkSwitch(
+            self,
+            text="",
+            variable=self.var,
+            width=44,
+            progress_color=self._dark_colors['primary'],
+            button_color=self._dark_colors['text_primary'],
+            button_hover_color=self._dark_colors['text_secondary'],
+            command=lambda: self.on_change(self.key, self.var.get())
+        )
+        self.switch.pack(anchor="w")
+    
+    def set_value(self, value: Any):
+        self.var.set(bool(value))
+    
+    def get_value(self) -> Any:
+        return self.var.get()
+
+
+class RegionField(FieldWidget):
+    """区域选择字段"""
+    
+    def __init__(self, master, label: str, key: str, on_change: Callable, app, **kwargs):
+        self.app = app
+        super().__init__(master, label, key, on_change, **kwargs)
+        self._create_widget()
+    
+    def _create_widget(self):
+        input_frame = ctk.CTkFrame(self, fg_color="transparent")
+        input_frame.pack(fill="x")
+        
+        self.var = tk.StringVar(value="未选择")
+        
+        self.entry = ctk.CTkEntry(
+            input_frame,
+            textvariable=self.var,
+            font=Theme.get_font('sm'),
+            height=Theme.DIMENSIONS['input_height'],
+            fg_color=self._dark_colors['bg_tertiary'],
+            border_color=self._dark_colors['border'],
+            text_color=self._dark_colors['text_primary'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius'],
+            state="disabled"
+        )
+        self.entry.pack(side="left", fill="x", expand=True, padx=(0, Theme.DIMENSIONS['spacing_xs']))
+        
+        self.btn = ctk.CTkButton(
+            input_frame,
+            text="选择",
+            font=Theme.get_font('sm'),
+            width=60,
+            height=Theme.DIMENSIONS['input_height'],
+            fg_color=self._dark_colors['primary'],
+            hover_color=self._dark_colors['primary_hover'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius'],
+            command=self._start_selection
+        )
+        self.btn.pack(side="right")
+    
+    def _start_selection(self):
+        try:
+            import screeninfo
+            
+            monitors = screeninfo.get_monitors()
+            min_x = min(monitor.x for monitor in monitors)
+            min_y = min(monitor.y for monitor in monitors)
+            max_x = max(monitor.x + monitor.width for monitor in monitors)
+            max_y = max(monitor.y + monitor.height for monitor in monitors)
+            
+            select_window = tk.Toplevel(self.app.root)
+            select_window.geometry(f"{max_x - min_x}x{max_y - min_y}+{min_x}+{min_y}")
+            select_window.overrideredirect(True)
+            select_window.attributes("-alpha", 0.3)
+            select_window.attributes("-topmost", True)
+            select_window.configure(cursor="cross", bg=self._dark_colors['primary'])
+            
+            canvas = tk.Canvas(select_window, bg=self._dark_colors['primary'], highlightthickness=0)
+            canvas.pack(fill=tk.BOTH, expand=True)
+            
+            start_x_abs = [0]
+            start_y_abs = [0]
+            start_x_rel = [0]
+            start_y_rel = [0]
+            rect = [None]
+            
+            def on_mouse_down(event):
+                start_x_abs[0] = event.x_root
+                start_y_abs[0] = event.y_root
+                start_x_rel[0] = event.x_root - min_x
+                start_y_rel[0] = event.y_root - min_y
+                rect[0] = None
+            
+            def on_mouse_drag(event):
+                current_x_rel = event.x_root - min_x
+                current_y_rel = event.y_root - min_y
+                if rect[0]:
+                    canvas.delete(rect[0])
+                rect[0] = canvas.create_rectangle(
+                    start_x_rel[0], start_y_rel[0], current_x_rel, current_y_rel,
+                    outline="#FFFFFF", width=2, fill=""
+                )
+            
+            def on_mouse_up(event):
+                end_x_abs = event.x_root
+                end_y_abs = event.y_root
+                
+                if abs(end_x_abs - start_x_abs[0]) < 10 or abs(end_y_abs - start_y_abs[0]) < 10:
+                    messagebox.showwarning("警告", "选择的区域太小，请重新选择")
+                    select_window.destroy()
+                    return
+                
+                region = (
+                    min(start_x_abs[0], end_x_abs),
+                    min(start_y_abs[0], end_y_abs),
+                    max(start_x_abs[0], end_x_abs),
+                    max(start_y_abs[0], end_y_abs)
+                )
+                
+                self.var.set(f"{region[0]},{region[1]},{region[2]},{region[3]}")
+                self.on_change(self.key, list(region))
+                
+                select_window.destroy()
+            
+            def on_escape(e):
+                select_window.destroy()
+            
+            canvas.bind("<Button-1>", on_mouse_down)
+            canvas.bind("<B1-Motion>", on_mouse_drag)
+            canvas.bind("<ButtonRelease-1>", on_mouse_up)
+            select_window.bind("<Escape>", on_escape)
+            select_window.focus_set()
+            
+        except ImportError:
+            messagebox.showerror("错误", "screeninfo库未安装，无法支持区域选择。\n请运行 'pip install screeninfo' 安装该库。")
+    
+    def set_value(self, value: Any):
+        if isinstance(value, (list, tuple)) and len(value) == 4:
+            self.var.set(f"{value[0]},{value[1]},{value[2]},{value[3]}")
+        else:
+            self.var.set(str(value or "未选择"))
+    
+    def get_value(self) -> Any:
+        return self.var.get()
+
+
+class FileField(FieldWidget):
+    """文件选择字段"""
+    
+    def __init__(self, master, label: str, key: str, on_change: Callable, 
+                 filetypes: List[tuple] = None, **kwargs):
+        self.filetypes = filetypes or [("所有文件", "*.*")]
+        self.full_path = ""
+        super().__init__(master, label, key, on_change, **kwargs)
+        self._create_widget()
+    
+    def _create_widget(self):
+        input_frame = ctk.CTkFrame(self, fg_color="transparent")
+        input_frame.pack(fill="x")
+        
+        self.var = tk.StringVar(value="")
+        
+        self.entry = ctk.CTkEntry(
+            input_frame,
+            textvariable=self.var,
+            font=Theme.get_font('sm'),
+            height=Theme.DIMENSIONS['input_height'],
+            fg_color=self._dark_colors['bg_tertiary'],
+            border_color=self._dark_colors['border'],
+            text_color=self._dark_colors['text_primary'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius'],
+            state="disabled"
+        )
+        self.entry.pack(side="left", fill="x", expand=True, padx=(0, Theme.DIMENSIONS['spacing_xs']))
+        
+        self.btn = ctk.CTkButton(
+            input_frame,
+            text="浏览",
+            font=Theme.get_font('sm'),
+            width=60,
+            height=Theme.DIMENSIONS['input_height'],
+            fg_color=self._dark_colors['primary'],
+            hover_color=self._dark_colors['primary_hover'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius'],
+            command=self._browse
+        )
+        self.btn.pack(side="right")
+    
+    def _browse(self):
+        file_path = filedialog.askopenfilename(
+            title="选择文件",
+            filetypes=self.filetypes
+        )
+        
+        if file_path:
+            self.full_path = file_path
+            filename = file_path.split("/")[-1].split("\\")[-1]
+            self.var.set(filename)
+            self.on_change(self.key, file_path)
+    
+    def set_value(self, value: Any):
+        if value:
+            self.full_path = str(value)
+            filename = str(value).split("/")[-1].split("\\")[-1]
+            self.var.set(filename)
+        else:
+            self.var.set("")
+    
+    def get_value(self) -> Any:
+        return self.full_path
+
+
+class KeyField(FieldWidget):
+    """按键选择字段"""
+    
+    def __init__(self, master, label: str, key: str, on_change: Callable, **kwargs):
+        self._listening = False
+        super().__init__(master, label, key, on_change, **kwargs)
+        self._create_widget()
+    
+    def _create_widget(self):
+        input_frame = ctk.CTkFrame(self, fg_color="transparent")
+        input_frame.pack(fill="x")
+        
+        self.var = tk.StringVar(value="")
+        
+        self.entry = ctk.CTkEntry(
+            input_frame,
+            textvariable=self.var,
+            font=Theme.get_font('sm'),
+            height=Theme.DIMENSIONS['input_height'],
+            fg_color=self._dark_colors['bg_tertiary'],
+            border_color=self._dark_colors['border'],
+            text_color=self._dark_colors['text_primary'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius'],
+            state="disabled"
+        )
+        self.entry.pack(side="left", fill="x", expand=True, padx=(0, Theme.DIMENSIONS['spacing_xs']))
+        
+        self.btn = ctk.CTkButton(
+            input_frame,
+            text="修改",
+            font=Theme.get_font('sm'),
+            width=60,
+            height=Theme.DIMENSIONS['input_height'],
+            fg_color=self._dark_colors['primary'],
+            hover_color=self._dark_colors['primary_hover'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius'],
+            command=self._start_listening
+        )
+        self.btn.pack(side="right")
+    
+    def _start_listening(self):
+        if self._listening:
+            return
+        
+        self._listening = True
+        self.btn.configure(text="请按键...", fg_color=self._dark_colors['warning'])
+        
+        def on_key_press(event):
+            key_name = event.keysym
+            
+            key_mappings = {
+                "Control_L": "ctrl", "Control_R": "ctrl",
+                "Alt_L": "alt", "Alt_R": "alt",
+                "Shift_L": "shift", "Shift_R": "shift",
+                "Super_L": "win", "Super_R": "win",
+                "Return": "enter", "BackSpace": "backspace",
+                "Tab": "tab", "Escape": "escape",
+                "space": "space", "Delete": "delete",
+                "Insert": "insert", "Home": "home",
+                "End": "end", "Prior": "pageup",
+                "Next": "pagedown", "Up": "up",
+                "Down": "down", "Left": "left",
+                "Right": "right",
+            }
+            
+            if key_name in key_mappings:
+                key_name = key_mappings[key_name]
+            elif len(key_name) == 1:
+                key_name = key_name.lower()
+            
+            self.var.set(key_name)
+            self.on_change(self.key, key_name)
+            
+            self._listening = False
+            self.btn.configure(text="修改", fg_color=self._dark_colors['primary'])
+            
+            return "break"
+        
+        self.bind_all("<KeyPress>", on_key_press)
+        
+        def reset_listening():
+            if self._listening:
+                self._listening = False
+                self.btn.configure(text="修改", fg_color=self._dark_colors['primary'])
+                self.unbind_all("<KeyPress>")
+        
+        self.after(10000, reset_listening)
+    
+    def set_value(self, value: Any):
+        self.var.set(str(value or ""))
+    
+    def get_value(self) -> Any:
+        return self.var.get()
+
+
+class PositionField(FieldWidget):
+    """位置选择字段"""
+    
+    def __init__(self, master, label: str, key: str, on_change: Callable, app, **kwargs):
+        self.app = app
+        super().__init__(master, label, key, on_change, **kwargs)
+        self._create_widget()
+    
+    def _create_widget(self):
+        input_frame = ctk.CTkFrame(self, fg_color="transparent")
+        input_frame.pack(fill="x")
+        
+        self.var = tk.StringVar(value="未选择")
+        
+        self.entry = ctk.CTkEntry(
+            input_frame,
+            textvariable=self.var,
+            font=Theme.get_font('sm'),
+            height=Theme.DIMENSIONS['input_height'],
+            fg_color=self._dark_colors['bg_tertiary'],
+            border_color=self._dark_colors['border'],
+            text_color=self._dark_colors['text_primary'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius']
+        )
+        self.entry.pack(side="left", fill="x", expand=True, padx=(0, Theme.DIMENSIONS['spacing_xs']))
+        self.entry.bind("<FocusOut>", lambda e: self._parse_and_change())
+        
+        self.btn = ctk.CTkButton(
+            input_frame,
+            text="获取",
+            font=Theme.get_font('sm'),
+            width=60,
+            height=Theme.DIMENSIONS['input_height'],
+            fg_color=self._dark_colors['primary'],
+            hover_color=self._dark_colors['primary_hover'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius'],
+            command=self._pick_position
+        )
+        self.btn.pack(side="right")
+    
+    def _parse_and_change(self):
+        try:
+            parts = self.var.get().replace(" ", "").split(",")
+            if len(parts) >= 2:
+                value = [int(parts[0]), int(parts[1])]
+                self.on_change(self.key, value)
+        except (ValueError, AttributeError):
+            pass
+    
+    def _pick_position(self):
+        try:
+            import screeninfo
+            
+            monitors = screeninfo.get_monitors()
+            min_x = min(monitor.x for monitor in monitors)
+            min_y = min(monitor.y for monitor in monitors)
+            max_x = max(monitor.x + monitor.width for monitor in monitors)
+            max_y = max(monitor.y + monitor.height for monitor in monitors)
+            
+            select_window = tk.Toplevel(self.app.root)
+            select_window.geometry(f"{max_x - min_x}x{max_y - min_y}+{min_x}+{min_y}")
+            select_window.overrideredirect(True)
+            select_window.attributes("-alpha", 0.2)
+            select_window.attributes("-topmost", True)
+            select_window.configure(cursor="crosshair", bg=self._dark_colors['primary'])
+            
+            label = tk.Label(
+                select_window, 
+                text="点击选择位置", 
+                font=("Microsoft YaHei", 24), 
+                bg=self._dark_colors['primary'], 
+                fg="#FFFFFF"
+            )
+            label.place(relx=0.5, rely=0.5, anchor="center")
+            
+            def on_click(event):
+                x, y = event.x_root, event.y_root
+                self.var.set(f"{x}, {y}")
+                self.on_change(self.key, [x, y])
+                select_window.destroy()
+            
+            def on_escape(e):
+                select_window.destroy()
+            
+            select_window.bind("<Button-1>", on_click)
+            select_window.bind("<Escape>", on_escape)
+            select_window.focus_set()
+            
+        except ImportError:
+            messagebox.showerror("错误", "screeninfo库未安装，无法支持位置选择。\n请运行 'pip install screeninfo' 安装该库。")
+    
+    def set_value(self, value: Any):
+        if isinstance(value, (list, tuple)) and len(value) >= 2:
+            self.var.set(f"{value[0]}, {value[1]}")
+        else:
+            self.var.set(str(value or "未选择"))
+    
+    def get_value(self) -> Any:
+        try:
+            parts = self.var.get().replace(" ", "").split(",")
+            if len(parts) >= 2:
+                return [int(parts[0]), int(parts[1])]
+            return None
+        except (ValueError, AttributeError):
+            return None
+
+
+class ColorField(FieldWidget):
+    """颜色选择字段"""
+    
+    def __init__(self, master, label: str, key: str, on_change: Callable, app, **kwargs):
+        self.app = app
+        self._current_color = "#808080"
+        super().__init__(master, label, key, on_change, **kwargs)
+        self._create_widget()
+    
+    def _create_widget(self):
+        input_frame = ctk.CTkFrame(self, fg_color="transparent")
+        input_frame.pack(fill="x")
+        
+        self.var = tk.StringVar(value="未选择")
+        
+        self.preview = ctk.CTkFrame(
+            input_frame,
+            width=32,
+            height=32,
+            fg_color=self._current_color,
+            corner_radius=Theme.DIMENSIONS['button_corner_radius']
+        )
+        self.preview.pack(side="left", padx=(0, Theme.DIMENSIONS['spacing_xs']))
+        
+        self.entry = ctk.CTkEntry(
+            input_frame,
+            textvariable=self.var,
+            font=Theme.get_font('sm'),
+            height=Theme.DIMENSIONS['input_height'],
+            fg_color=self._dark_colors['bg_tertiary'],
+            border_color=self._dark_colors['border'],
+            text_color=self._dark_colors['text_primary'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius'],
+            state="disabled"
+        )
+        self.entry.pack(side="left", fill="x", expand=True, padx=(0, Theme.DIMENSIONS['spacing_xs']))
+        
+        self.btn = ctk.CTkButton(
+            input_frame,
+            text="选择",
+            font=Theme.get_font('sm'),
+            width=60,
+            height=Theme.DIMENSIONS['input_height'],
+            fg_color=self._dark_colors['primary'],
+            hover_color=self._dark_colors['primary_hover'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius'],
+            command=self._pick_color
+        )
+        self.btn.pack(side="right")
+    
+    def _pick_color(self):
+        from ui.utils import create_color_picker
+        
+        def on_color_picked(rgb):
+            r, g, b = rgb
+            self.var.set(f"RGB({r}, {g}, {b})")
+            self._current_color = f"#{r:02x}{g:02x}{b:02x}"
+            self.preview.configure(fg_color=self._current_color)
+            self.on_change(self.key, list(rgb))
+        
+        create_color_picker(self.app, on_color_picked)
+    
+    def set_value(self, value: Any):
+        if isinstance(value, (list, tuple)) and len(value) >= 3:
+            r, g, b = value[0], value[1], value[2]
+            self.var.set(f"RGB({r}, {g}, {b})")
+            self._current_color = f"#{r:02x}{g:02x}{b:02x}"
+            self.preview.configure(fg_color=self._current_color)
+        else:
+            self.var.set(str(value or "未选择"))
+    
+    def get_value(self) -> Any:
+        return self.var.get()
+
+
 class PropertyPanel(ctk.CTkFrame):
     """属性面板"""
     
-    def __init__(self, master, app, on_change: Optional[Callable[[str, Any], None]] = None, **kwargs):
+    def __init__(self, master, app, on_change: Optional[Callable[[str, str, Any], None]] = None, **kwargs):
         super().__init__(master, **kwargs)
         self.app = app
         self.on_change = on_change
         
         self.current_node_id: Optional[str] = None
         self.current_node_type: Optional[str] = None
-        self.widgets: Dict[str, Any] = {}
+        self.widgets: Dict[str, FieldWidget] = {}
+        
+        self._dark_colors = Theme.get_dark_colors()
+        self.configure(
+            fg_color=self._dark_colors['sidebar_bg'],
+            corner_radius=0,
+            width=Theme.DIMENSIONS['property_width']
+        )
         
         self._create_ui()
     
     def _create_ui(self):
         """创建UI"""
+        self.header_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.header_frame.pack(fill="x", padx=Theme.DIMENSIONS['spacing_md'], pady=Theme.DIMENSIONS['spacing_md'])
+        
         self.title_label = ctk.CTkLabel(
-            self,
+            self.header_frame,
             text="属性面板",
-            font=Theme.get_font("md"),
-            text_color=Theme.COLORS["text_primary"]
+            font=Theme.get_font('lg'),
+            text_color=self._dark_colors['text_primary']
         )
-        self.title_label.pack(pady=(10, 5))
+        self.title_label.pack(side="left")
+        
+        self.node_type_label = ctk.CTkLabel(
+            self.header_frame,
+            text="",
+            font=Theme.get_font('sm'),
+            text_color=self._dark_colors['text_muted']
+        )
+        self.node_type_label.pack(side="right")
+        
+        self.separator = ctk.CTkFrame(
+            self,
+            height=1,
+            fg_color=self._dark_colors['border']
+        )
+        self.separator.pack(fill="x", padx=Theme.DIMENSIONS['spacing_md'])
         
         self.content_frame = ctk.CTkScrollableFrame(
             self,
-            fg_color="transparent"
+            fg_color="transparent",
+            scrollbar_button_color=self._dark_colors['bg_tertiary'],
+            scrollbar_button_hover_color=self._dark_colors['border']
         )
-        self.content_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        self.content_frame.pack(fill="both", expand=True, padx=Theme.DIMENSIONS['spacing_md'], pady=Theme.DIMENSIONS['spacing_sm'])
         
         self._show_empty()
     
     def _show_empty(self):
         """显示空状态"""
         self._clear_content()
+        self.title_label.configure(text="属性面板")
+        self.node_type_label.configure(text="")
         
-        label = ctk.CTkLabel(
-            self.content_frame,
-            text="请选择一个节点",
-            font=Theme.get_font("sm"),
-            text_color=Theme.COLORS["text_secondary"]
+        empty_frame = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        empty_frame.pack(expand=True)
+        
+        empty_icon = ctk.CTkLabel(
+            empty_frame,
+            text="◇",
+            font=("Arial", 32),
+            text_color=self._dark_colors['border']
         )
-        label.pack(pady=20)
+        empty_icon.pack(pady=(Theme.DIMENSIONS['spacing_xl'], Theme.DIMENSIONS['spacing_md']))
+        
+        empty_text = ctk.CTkLabel(
+            empty_frame,
+            text="请选择一个节点\n查看和编辑属性",
+            font=Theme.get_font('sm'),
+            text_color=self._dark_colors['text_muted'],
+            justify="center"
+        )
+        empty_text.pack()
     
     def _clear_content(self):
         """清空内容"""
@@ -118,114 +824,102 @@ class PropertyPanel(ctk.CTkFrame):
         
         self._clear_content()
         
-        self.title_label.configure(text=f"属性: {node_type.replace('Node', '')}")
+        display_name = node_type.replace("Node", "").replace("Condition", "").replace("Action", "")
+        self.title_label.configure(text="节点属性")
+        self.node_type_label.configure(text=display_name)
         
         self._create_base_fields(node_data)
         
         schema = NODE_CONFIG_SCHEMAS.get(node_type, [])
-        for field in schema:
-            self._create_field(field, node_data.get("config", {}).get(field["key"]))
+        if schema:
+            self._create_section_title("配置参数")
+            for field in schema:
+                self._create_field(field, node_data.get("config", {}).get(field["key"]))
+    
+    def _create_section_title(self, title: str):
+        """创建区块标题"""
+        section_frame = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        section_frame.pack(fill="x", pady=(Theme.DIMENSIONS['spacing_lg'], Theme.DIMENSIONS['spacing_sm']))
+        
+        section_label = ctk.CTkLabel(
+            section_frame,
+            text=title,
+            font=Theme.get_font('sm'),
+            text_color=self._dark_colors['text_primary']
+        )
+        section_label.pack(side="left")
+        
+        section_line = ctk.CTkFrame(
+            section_frame,
+            height=1,
+            fg_color=self._dark_colors['border']
+        )
+        section_line.pack(side="left", fill="x", expand=True, padx=(Theme.DIMENSIONS['spacing_sm'], 0))
     
     def _create_base_fields(self, node_data: Dict[str, Any]):
         """创建基础字段"""
-        frame = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        frame.pack(fill="x", pady=2)
+        self._create_section_title("基本信息")
         
-        ctk.CTkLabel(
-            frame,
-            text="名称",
-            font=Theme.get_font("xs"),
-            text_color=Theme.COLORS["text_secondary"],
-            width=80,
-            anchor="w"
-        ).pack(side="left")
-        
-        name_var = tk.StringVar(value=node_data.get("name", ""))
-        entry = ctk.CTkEntry(
-            frame,
-            textvariable=name_var,
-            font=Theme.get_font("xs"),
-            height=28
+        name_field = TextField(
+            self.content_frame,
+            label="名称",
+            key="name",
+            on_change=self._on_field_change
         )
-        entry.pack(side="left", fill="x", expand=True, padx=5)
-        entry.bind("<FocusOut>", lambda e: self._on_field_change("name", name_var.get()))
-        self.widgets["name"] = entry
+        name_field.set_value(node_data.get("name", ""))
+        name_field.pack(fill="x", pady=Theme.DIMENSIONS['spacing_xs'])
+        self.widgets["name"] = name_field
         
-        frame2 = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        frame2.pack(fill="x", pady=2)
-        
-        ctk.CTkLabel(
-            frame2,
-            text="启用",
-            font=Theme.get_font("xs"),
-            text_color=Theme.COLORS["text_secondary"],
-            width=80,
-            anchor="w"
-        ).pack(side="left")
-        
-        enabled_var = tk.BooleanVar(value=node_data.get("enabled", True))
-        switch = ctk.CTkSwitch(
-            frame2,
-            text="",
-            variable=enabled_var,
-            command=lambda: self._on_field_change("enabled", enabled_var.get())
+        enabled_field = BoolField(
+            self.content_frame,
+            label="启用",
+            key="enabled",
+            on_change=self._on_field_change
         )
-        switch.pack(side="left", padx=5)
-        self.widgets["enabled"] = switch
+        enabled_field.set_value(node_data.get("enabled", True))
+        enabled_field.pack(fill="x", pady=Theme.DIMENSIONS['spacing_xs'])
+        self.widgets["enabled"] = enabled_field
     
     def _create_field(self, field: Dict[str, Any], value: Any):
         """创建字段"""
-        frame = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        frame.pack(fill="x", pady=2)
-        
-        ctk.CTkLabel(
-            frame,
-            text=field["label"],
-            font=Theme.get_font("xs"),
-            text_color=Theme.COLORS["text_secondary"],
-            width=80,
-            anchor="w"
-        ).pack(side="left")
-        
         field_type = field.get("type", "text")
         key = field["key"]
+        label = field["label"]
+        
+        field_widget = None
         
         if field_type == "text":
-            var = tk.StringVar(value=str(value or ""))
-            widget = ctk.CTkEntry(frame, textvariable=var, font=Theme.get_font("xs"), height=28)
-            widget.pack(side="left", fill="x", expand=True, padx=5)
-            widget.bind("<FocusOut>", lambda e, k=key, v=var: self._on_field_change(k, v.get()))
-            self.widgets[key] = widget
-        
+            field_widget = TextField(self.content_frame, label, key, self._on_field_change)
         elif field_type == "number":
-            var = tk.StringVar(value=str(value or field.get("min", 0)))
-            widget = ctk.CTkEntry(frame, textvariable=var, font=Theme.get_font("xs"), height=28, width=100)
-            widget.pack(side="left", padx=5)
-            widget.bind("<FocusOut>", lambda e, k=key, v=var: self._on_field_change(k, self._parse_number(v.get())))
-            self.widgets[key] = widget
-        
+            field_widget = NumberField(
+                self.content_frame, label, key, self._on_field_change,
+                min_val=field.get("min"), max_val=field.get("max"), step=field.get("step", 1)
+            )
         elif field_type == "select":
-            options = field.get("options", [])
-            var = tk.StringVar(value=str(value or options[0] if options else ""))
-            widget = ctk.CTkOptionMenu(frame, variable=var, values=options, font=Theme.get_font("xs"), height=28, width=100)
-            widget.pack(side="left", padx=5)
-            widget.bind("<<ComboboxSelected>>", lambda e, k=key, v=var: self._on_field_change(k, v.get()))
-            self.widgets[key] = widget
-        
+            field_widget = SelectField(
+                self.content_frame, label, key, self._on_field_change,
+                options=field.get("options", [])
+            )
         elif field_type == "bool":
-            var = tk.BooleanVar(value=bool(value))
-            widget = ctk.CTkSwitch(frame, text="", variable=var, command=lambda k=key, v=var: self._on_field_change(k, v.get()))
-            widget.pack(side="left", padx=5)
-            self.widgets[key] = widget
-    
-    def _parse_number(self, value: str) -> Any:
-        """解析数字"""
-        try:
-            if "." in value:
-                return float(value)
-            return int(value)
-        except ValueError:
-            return 0
+            field_widget = BoolField(self.content_frame, label, key, self._on_field_change)
+        elif field_type == "region":
+            field_widget = RegionField(self.content_frame, label, key, self._on_field_change, self.app)
+        elif field_type == "file":
+            field_widget = FileField(
+                self.content_frame, label, key, self._on_field_change,
+                filetypes=field.get("filetypes", [("所有文件", "*.*")])
+            )
+        elif field_type == "key":
+            field_widget = KeyField(self.content_frame, label, key, self._on_field_change)
+        elif field_type == "position":
+            field_widget = PositionField(self.content_frame, label, key, self._on_field_change, self.app)
+        elif field_type == "color":
+            field_widget = ColorField(self.content_frame, label, key, self._on_field_change, self.app)
+        
+        if field_widget:
+            field_widget.set_value(value)
+            field_widget.pack(fill="x", pady=Theme.DIMENSIONS['spacing_xs'])
+            self.widgets[key] = field_widget
     
     def _on_field_change(self, key: str, value: Any):
         """字段变更"""
