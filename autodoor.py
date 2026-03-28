@@ -350,6 +350,10 @@ class AutoDoorOCR:
         create_background_tab(self)
         create_script_tab(self)
         create_basic_tab(self)
+        self.behavior_tree.create_tab(self.content_area)
+        
+        self._show_page('home')
+        self.behavior_tree.create_tab(self.content_area)
         
         self._show_page('home')
 
