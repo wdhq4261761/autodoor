@@ -641,6 +641,11 @@ class ParallelNode(CompositeNode):
             elif status == NodeStatus.RUNNING:
                 running_count += 1
         
+        if self.success_policy == self.SUCCESS_POLICY_ONE:
+            if success_count > 0:
+                self._status = NodeStatus.SUCCESS
+                return NodeStatus.SUCCESS
+        
         if running_count > 0:
             self._status = NodeStatus.RUNNING
             return NodeStatus.RUNNING

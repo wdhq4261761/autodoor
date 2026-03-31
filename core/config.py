@@ -483,7 +483,7 @@ class ConfigManager:
         if 'home_checkboxes' in config and hasattr(self.app, 'module_check_vars'):
             home_checkboxes = config['home_checkboxes']
             if home_checkboxes:
-                for module in ['ocr', 'timed', 'number', 'image', 'script', 'background']:
+                for module in ['ocr', 'timed', 'number', 'image', 'script', 'background', 'behavior_tree']:
                     if module in home_checkboxes and module in self.app.module_check_vars:
                         self.app.module_check_vars[module].set(home_checkboxes[module])
     
@@ -762,7 +762,8 @@ class ConfigManager:
             'number': self.app.module_check_vars['number'].get(),
             'image': self.app.module_check_vars.get('image', tk.BooleanVar(value=False)).get(),
             'script': self.app.module_check_vars.get('script', tk.BooleanVar(value=False)).get(),
-            'background': self.app.module_check_vars.get('background', tk.BooleanVar(value=False)).get()
+            'background': self.app.module_check_vars.get('background', tk.BooleanVar(value=False)).get(),
+            'behavior_tree': self.app.module_check_vars.get('behavior_tree', tk.BooleanVar(value=False)).get()
         }
     
     def _get_script_config(self):
