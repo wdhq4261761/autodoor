@@ -150,7 +150,14 @@ class CompositeNode(Node):
             child.reset()
     
     def tick(self, context: "ExecutionContext") -> NodeStatus:
-        """执行组合节点逻辑，包含重试、重复、超时装饰"""
+        """执行组合节点逻辑，包含重试、重复、超时装饰
+        
+        新规格：
+        1. 当组合节点判定通过时，首先立刻结束当前运行的所有子节点
+        2. 然后根据重复次数检查是否要重复进行当前节点
+        3. 如果需要则从头重复进行
+        4. 如果不需要则立刻完成当前节点
+        """
         if not self.enabled:
             return NodeStatus.SUCCESS
         
@@ -171,24 +178,6 @@ class CompositeNode(Node):
                 context.notify_node_status(self.node_id, "failure")
                 return NodeStatus.FAILURE
         
-        if self.repeat_count == -1:
-            status = self._execute_composite(context)
-            self._status = status
-            if status == NodeStatus.SUCCESS:
-                self._reset_children()
-                return NodeStatus.RUNNING
-            if status == NodeStatus.FAILURE:
-                context.notify_node_status(self.node_id, "failure")
-            return status
-        
-        if self._current_repeat >= self.repeat_count:
-            self._current_retry = 0
-            self._current_repeat = 0
-            self._start_time = None
-            self._status = NodeStatus.SUCCESS
-            context.notify_node_status(self.node_id, "success")
-            return NodeStatus.SUCCESS
-        
         status = self._execute_composite(context)
         self._status = status
         
@@ -200,6 +189,7 @@ class CompositeNode(Node):
                 self._current_retry += 1
                 context.log(f"{self.name}: 重试 {self._current_retry}/{self.retry_count}")
                 self._reset_children()
+                self._current_index = 0
                 return NodeStatus.RUNNING
             self._current_retry = 0
             self._current_repeat = 0
@@ -207,9 +197,14 @@ class CompositeNode(Node):
             context.notify_node_status(self.node_id, "failure")
             return NodeStatus.FAILURE
         
+        self._reset_children()
+        self._current_index = 0
+        
+        if self.repeat_count == -1:
+            return NodeStatus.RUNNING
+        
         self._current_repeat += 1
         if self._current_repeat < self.repeat_count:
-            self._reset_children()
             return NodeStatus.RUNNING
         
         self._current_retry = 0
