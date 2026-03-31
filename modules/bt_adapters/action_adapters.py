@@ -167,12 +167,16 @@ class DelayNode(ActionNode):
     
     非阻塞延时：每次tick检查是否到达指定时间
     """
-    
+
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
         self._delay_start: Optional[float] = None
+        self._delay_completed: bool = False
     
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
+        if self._delay_completed:
+            return NodeStatus.SUCCESS
+        
         duration_ms = self.config.get("duration_ms", 1000)
         
         if self._delay_start is None:
@@ -183,7 +187,7 @@ class DelayNode(ActionNode):
         
         if elapsed >= duration_ms:
             context.log(f"延时节点 {self.name}: 延时完成")
-            self._delay_start = None
+            self._delay_completed = True
             return NodeStatus.SUCCESS
         
         return NodeStatus.RUNNING
@@ -191,6 +195,7 @@ class DelayNode(ActionNode):
     def reset(self) -> None:
         super().reset()
         self._delay_start = None
+        self._delay_completed = False
     
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()

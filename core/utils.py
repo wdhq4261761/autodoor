@@ -57,6 +57,8 @@ def exit_program(app):
     Args:
         app: 主应用实例
     """
+    app.save_config()
+    
     if app.is_running:
         app.ocr.stop_monitoring()
     app.timed_module.stop_timed_tasks()

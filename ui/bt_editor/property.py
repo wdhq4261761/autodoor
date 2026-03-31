@@ -77,7 +77,7 @@ NODE_CONFIG_SCHEMAS = {
 }
 
 CONDITION_DECORATOR_FIELDS = [
-    {"key": "invert", "label": "取反结果", "type": "bool"},
+    {"key": "invert", "label": "结果取反", "type": "bool"},
     {"key": "retry_count", "label": "失败重试次数", "type": "number", "min": 0, "max": 10},
 ]
 
