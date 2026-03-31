@@ -6,7 +6,7 @@ name: AutoDoor Build and Release
 
 on:
   push:
-    branches: [ master, refactor, test ]
+    branches: [ master, refactor, test, behavior_tree ]
     tags: [ 'autodoor_V*' ]
   pull_request:
     branches: [ master ]

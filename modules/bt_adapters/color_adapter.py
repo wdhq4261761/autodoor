@@ -28,28 +28,13 @@ class ColorConditionNode(ConditionNode):
         self.save_position = self.config.get("save_position", True)
         self.position_key = self.config.get("position_key", "last_color_position")
     
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        """
-        执行颜色条件检测
-        
-        Args:
-            context: 执行上下文
-            
-        Returns:
-            检测结果状态
-        """
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
-        if not context.check_running():
-            return NodeStatus.ABORTED
-        
+    def _execute_condition(self, context: "ExecutionContext") -> NodeStatus:
+        """执行颜色条件检测"""
         try:
             screenshot = context.get_screenshot(self.region)
             
             if screenshot is None:
                 context.log(f"颜色节点 {self.name}: 截图失败")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
             
             from utils.recognition import ColorRecognizer
@@ -67,16 +52,13 @@ class ColorConditionNode(ConditionNode):
                     abs_y = self.region[1] + position[1]
                     context.blackboard.set(self.position_key, (abs_x, abs_y))
                 context.log(f"颜色节点 {self.name}: 匹配成功 ({match_pixels}像素)")
-                self._status = NodeStatus.SUCCESS
                 return NodeStatus.SUCCESS
             else:
                 context.log(f"颜色节点 {self.name}: 未匹配到目标颜色")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
                 
         except Exception as e:
             context.log(f"颜色节点 {self.name}: 执行出错 - {e}")
-            self._status = NodeStatus.FAILURE
             return NodeStatus.FAILURE
     
     def to_dict(self) -> Dict[str, Any]:

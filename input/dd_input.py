@@ -250,7 +250,8 @@ class DDVirtualInput(BaseInputController):
         if not self.key_down(key, priority):
             return False
         
-        time.sleep(delay if delay > 0 else 0.05)
+        if delay > 0:
+            time.sleep(delay)
         
         return self.key_up(key, priority)
     
@@ -283,7 +284,6 @@ class DDVirtualInput(BaseInputController):
     def mouse_click(self, button: str = 'left') -> bool:
         if not self.mouse_down(button):
             return False
-        time.sleep(0.05)
         return self.mouse_up(button)
     
     def mouse_down(self, button: str = 'left') -> bool:

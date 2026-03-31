@@ -71,19 +71,30 @@ NODE_CONFIG_SCHEMAS = {
         {"key": "code_path", "label": "代码路径", "type": "file", "filetypes": [("Python脚本", "*.py"), ("批处理", "*.bat;*.cmd"), ("PowerShell", "*.ps1"), ("所有文件", "*.*")]},
         {"key": "code_type", "label": "代码类型", "type": "select", "options": ["auto", "python", "batch", "powershell"]},
     ],
-    "RepeaterNode": [
-        {"key": "count", "label": "重复次数(-1无限)", "type": "number"},
-    ],
-    "RetryNode": [
-        {"key": "max_retries", "label": "最大重试次数", "type": "number"},
-    ],
-    "TimeoutNode": [
-        {"key": "timeout_ms", "label": "超时时间(ms)", "type": "number"},
-    ],
     "ParallelNode": [
         {"key": "success_policy", "label": "成功策略", "type": "select", "options": ["require_all", "require_one"]},
     ],
 }
+
+CONDITION_DECORATOR_FIELDS = [
+    {"key": "invert", "label": "取反结果", "type": "bool"},
+    {"key": "retry_count", "label": "失败重试次数", "type": "number", "min": 0, "max": 10},
+]
+
+ACTION_DECORATOR_FIELDS = [
+    {"key": "repeat_count", "label": "重复次数(1不重复,-1无限)", "type": "number"},
+    {"key": "timeout_ms", "label": "超时时间(ms,0不限)", "type": "number"},
+]
+
+COMPOSITE_DECORATOR_FIELDS = [
+    {"key": "retry_count", "label": "失败重试次数", "type": "number", "min": 0, "max": 10},
+    {"key": "repeat_count", "label": "重复次数(1不重复,-1无限)", "type": "number"},
+    {"key": "timeout_ms", "label": "超时时间(ms,0不限)", "type": "number"},
+]
+
+CONDITION_NODES = ["OCRConditionNode", "ImageConditionNode", "ColorConditionNode", "NumberConditionNode", "VariableConditionNode"]
+ACTION_NODES = ["KeyPressNode", "MouseClickNode", "MouseMoveNode", "DelayNode", "SetVariableNode", "ScriptNode", "CodeNode"]
+COMPOSITE_NODES = ["SequenceNode", "SelectorNode", "ParallelNode"]
 
 
 class FieldWidget(ctk.CTkFrame):
@@ -497,43 +508,63 @@ class KeyField(FieldWidget):
         self.btn.configure(text="请按键...", fg_color=self._dark_colors['warning'])
         
         def on_key_press(event):
-            key_name = event.keysym
-            
-            key_mappings = {
-                "Control_L": "ctrl", "Control_R": "ctrl",
-                "Alt_L": "alt", "Alt_R": "alt",
-                "Shift_L": "shift", "Shift_R": "shift",
-                "Super_L": "win", "Super_R": "win",
-                "Return": "enter", "BackSpace": "backspace",
-                "Tab": "tab", "Escape": "escape",
-                "space": "space", "Delete": "delete",
-                "Insert": "insert", "Home": "home",
-                "End": "end", "Prior": "pageup",
-                "Next": "pagedown", "Up": "up",
-                "Down": "down", "Left": "left",
-                "Right": "right",
-            }
-            
-            if key_name in key_mappings:
-                key_name = key_mappings[key_name]
-            elif len(key_name) == 1:
-                key_name = key_name.lower()
-            
-            self.var.set(key_name)
-            self.on_change(self.key, key_name)
-            
-            self._listening = False
-            self.btn.configure(text="修改", fg_color=self._dark_colors['primary'])
-            
-            return "break"
+            try:
+                if not self._listening:
+                    return
+                
+                key_name = event.keysym
+                
+                key_mappings = {
+                    "Control_L": "ctrl", "Control_R": "ctrl",
+                    "Alt_L": "alt", "Alt_R": "alt",
+                    "Shift_L": "shift", "Shift_R": "shift",
+                    "Super_L": "win", "Super_R": "win",
+                    "Return": "enter", "BackSpace": "backspace",
+                    "Tab": "tab", "Escape": "escape",
+                    "space": "space", "Delete": "delete",
+                    "Insert": "insert", "Home": "home",
+                    "End": "end", "Prior": "pageup",
+                    "Next": "pagedown", "Up": "up",
+                    "Down": "down", "Left": "left",
+                    "Right": "right",
+                }
+                
+                if key_name in key_mappings:
+                    key_name = key_mappings[key_name]
+                elif len(key_name) == 1:
+                    key_name = key_name.lower()
+                
+                self.var.set(key_name)
+                self.on_change(self.key, key_name)
+                
+                self._listening = False
+                if self.winfo_exists():
+                    self.btn.configure(text="修改", fg_color=self._dark_colors['primary'])
+                
+                toplevel = self.winfo_toplevel()
+                toplevel.unbind("<KeyPress>")
+                
+                return "break"
+            except Exception:
+                pass
         
-        self.bind_all("<KeyPress>", on_key_press)
+        toplevel = self.winfo_toplevel()
+        toplevel.bind("<KeyPress>", on_key_press)
+        self._key_press_binding = on_key_press
         
         def reset_listening():
             if self._listening:
                 self._listening = False
-                self.btn.configure(text="修改", fg_color=self._dark_colors['primary'])
-                self.unbind_all("<KeyPress>")
+                try:
+                    if self.winfo_exists():
+                        self.btn.configure(text="修改", fg_color=self._dark_colors['primary'])
+                except Exception:
+                    pass
+                try:
+                    toplevel = self.winfo_toplevel()
+                    toplevel.unbind("<KeyPress>")
+                except Exception:
+                    pass
         
         self.after(10000, reset_listening)
     
@@ -817,8 +848,51 @@ class PropertyPanel(ctk.CTkFrame):
             widget.destroy()
         self.widgets.clear()
     
+    def _force_save_focus(self):
+        """强制保存当前焦点控件的值"""
+        try:
+            focused = self.focus_get()
+            if focused:
+                for key, widget in self.widgets.items():
+                    if hasattr(widget, 'entry') and widget.entry == focused:
+                        focused.event_generate("<FocusOut>")
+                        break
+                    elif hasattr(widget, 'winfo_children'):
+                        for child in widget.winfo_children():
+                            if child == focused:
+                                focused.event_generate("<FocusOut>")
+                                break
+        except Exception:
+            pass
+    
+    def _save_current_values(self):
+        """保存当前所有字段的值"""
+        if not self.current_node_id or not self.on_change:
+            return
+        
+        saved_node_id = self.current_node_id
+        for key, widget in self.widgets.items():
+            if hasattr(widget, 'get_value'):
+                try:
+                    value = widget.get_value()
+                    self.on_change(saved_node_id, key, value)
+                except Exception:
+                    pass
+    
+    def save_and_clear(self):
+        """保存当前值并清空面板"""
+        self._force_save_focus()
+        self._save_current_values()
+        self.current_node_id = None
+        self.current_node_type = None
+        self._show_empty()
+    
     def load_node(self, node_id: str, node_type: str, node_data: Dict[str, Any]):
         """加载节点属性"""
+        if self.current_node_id and self.current_node_id != node_id:
+            self._force_save_focus()
+            self._save_current_values()
+        
         self.current_node_id = node_id
         self.current_node_type = node_type
         
@@ -834,6 +908,19 @@ class PropertyPanel(ctk.CTkFrame):
         if schema:
             self._create_section_title("配置参数")
             for field in schema:
+                self._create_field(field, node_data.get("config", {}).get(field["key"]))
+        
+        decorator_fields = []
+        if node_type in CONDITION_NODES:
+            decorator_fields = CONDITION_DECORATOR_FIELDS
+        elif node_type in ACTION_NODES:
+            decorator_fields = ACTION_DECORATOR_FIELDS
+        elif node_type in COMPOSITE_NODES:
+            decorator_fields = COMPOSITE_DECORATOR_FIELDS
+        
+        if decorator_fields:
+            self._create_section_title("装饰参数")
+            for field in decorator_fields:
                 self._create_field(field, node_data.get("config", {}).get(field["key"]))
     
     def _create_section_title(self, title: str):

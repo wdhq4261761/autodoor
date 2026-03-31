@@ -4,6 +4,7 @@
 将输入操作封装为行为树动作节点
 """
 
+import time
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from modules.behavior_tree.nodes import ActionNode, NodeStatus
@@ -25,16 +26,9 @@ class KeyPressNode(ActionNode):
         self.action = self.config.get("action", "press")
         self.duration = self.config.get("duration", 0)
     
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
-        if not context.check_running():
-            return NodeStatus.ABORTED
-        
+    def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
         if not self.key:
             context.log(f"按键节点 {self.name}: 未配置按键")
-            self._status = NodeStatus.FAILURE
             return NodeStatus.FAILURE
         
         try:
@@ -42,16 +36,13 @@ class KeyPressNode(ActionNode):
             
             if success:
                 context.log(f"按键节点 {self.name}: 执行按键 {self.key}")
-                self._status = NodeStatus.SUCCESS
                 return NodeStatus.SUCCESS
             else:
                 context.log(f"按键节点 {self.name}: 按键执行失败")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
                 
         except Exception as e:
             context.log(f"按键节点 {self.name}: 执行出错 - {e}")
-            self._status = NodeStatus.FAILURE
             return NodeStatus.FAILURE
     
     def to_dict(self) -> Dict[str, Any]:
@@ -79,13 +70,7 @@ class MouseClickNode(ActionNode):
         self.use_blackboard = self.config.get("use_blackboard", False)
         self.position_key = self.config.get("position_key", "last_ocr_position")
     
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
-        if not context.check_running():
-            return NodeStatus.ABORTED
-        
+    def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
         try:
             click_position = self.position
             
@@ -97,16 +82,13 @@ class MouseClickNode(ActionNode):
             if success:
                 pos_str = click_position if click_position else "当前位置"
                 context.log(f"鼠标节点 {self.name}: 执行点击 {self.button} @ {pos_str}")
-                self._status = NodeStatus.SUCCESS
                 return NodeStatus.SUCCESS
             else:
                 context.log(f"鼠标节点 {self.name}: 点击执行失败")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
                 
         except Exception as e:
             context.log(f"鼠标节点 {self.name}: 执行出错 - {e}")
-            self._status = NodeStatus.FAILURE
             return NodeStatus.FAILURE
     
     def to_dict(self) -> Dict[str, Any]:
@@ -136,13 +118,7 @@ class MouseMoveNode(ActionNode):
         self.relative = self.config.get("relative", False)
         self.smooth = self.config.get("smooth", True)
     
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
-        if not context.check_running():
-            return NodeStatus.ABORTED
-        
+    def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
         try:
             move_position = self.position
             
@@ -151,12 +127,10 @@ class MouseMoveNode(ActionNode):
             
             if not move_position:
                 context.log(f"鼠标移动节点 {self.name}: 未指定位置")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
             
             if context.input_controller is None:
                 context.log(f"鼠标移动节点 {self.name}: 输入控制器不可用")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
             
             if self.relative:
@@ -165,12 +139,10 @@ class MouseMoveNode(ActionNode):
                 context.input_controller.move_to(move_position[0], move_position[1])
             
             context.log(f"鼠标移动节点 {self.name}: 移动到 {move_position}")
-            self._status = NodeStatus.SUCCESS
             return NodeStatus.SUCCESS
                 
         except Exception as e:
             context.log(f"鼠标移动节点 {self.name}: 执行出错 - {e}")
-            self._status = NodeStatus.FAILURE
             return NodeStatus.FAILURE
     
     def to_dict(self) -> Dict[str, Any]:
@@ -190,29 +162,31 @@ class DelayNode(ActionNode):
     """
     延时动作节点
     
-    执行延时操作
+    非阻塞延时：每次tick检查是否到达指定时间
     """
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
         self.duration_ms = self.config.get("duration_ms", 1000)
+        self._delay_start: Optional[float] = None
     
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.enabled:
+    def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
+        if self._delay_start is None:
+            self._delay_start = time.time() * 1000
+            context.log(f"延时节点 {self.name}: 开始延时 {self.duration_ms}ms")
+        
+        elapsed = time.time() * 1000 - self._delay_start
+        
+        if elapsed >= self.duration_ms:
+            context.log(f"延时节点 {self.name}: 延时完成")
+            self._delay_start = None
             return NodeStatus.SUCCESS
         
-        if not context.check_running():
-            return NodeStatus.ABORTED
-        
-        try:
-            context.log(f"延时节点 {self.name}: 延时 {self.duration_ms}ms")
-            context.execute_delay(self.duration_ms)
-            self._status = NodeStatus.SUCCESS
-            return NodeStatus.SUCCESS
-        except Exception as e:
-            context.log(f"延时节点 {self.name}: 执行出错 - {e}")
-            self._status = NodeStatus.FAILURE
-            return NodeStatus.FAILURE
+        return NodeStatus.RUNNING
+    
+    def reset(self) -> None:
+        super().reset()
+        self._delay_start = None
     
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
@@ -237,16 +211,9 @@ class SetVariableNode(ActionNode):
         self.value_type = self.config.get("value_type", "static")
         self.operation = self.config.get("operation", "set")
     
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
-        if not context.check_running():
-            return NodeStatus.ABORTED
-        
+    def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
         if not self.variable_name:
             context.log(f"设置变量节点 {self.name}: 未配置变量名")
-            self._status = NodeStatus.FAILURE
             return NodeStatus.FAILURE
         
         try:
@@ -266,12 +233,10 @@ class SetVariableNode(ActionNode):
                 context.blackboard.clear()
                 context.log(f"设置变量节点 {self.name}: 清空黑板")
             
-            self._status = NodeStatus.SUCCESS
             return NodeStatus.SUCCESS
                 
         except Exception as e:
             context.log(f"设置变量节点 {self.name}: 执行出错 - {e}")
-            self._status = NodeStatus.FAILURE
             return NodeStatus.FAILURE
     
     def to_dict(self) -> Dict[str, Any]:
@@ -299,16 +264,9 @@ class CodeNode(ActionNode):
         self.code_type = self.config.get("code_type", "auto")
         self.args = self.config.get("args", [])
     
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
-        if not context.check_running():
-            return NodeStatus.ABORTED
-        
+    def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
         if not self.code_path:
             context.log(f"代码节点 {self.name}: 未配置代码路径")
-            self._status = NodeStatus.FAILURE
             return NodeStatus.FAILURE
         
         try:
@@ -318,7 +276,6 @@ class CodeNode(ActionNode):
             code_path = Path(self.code_path)
             if not code_path.exists():
                 context.log(f"代码节点 {self.name}: 代码文件不存在 {self.code_path}")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
             
             if self.code_type == "auto":
@@ -338,20 +295,16 @@ class CodeNode(ActionNode):
             
             if result.returncode == 0:
                 context.log(f"代码节点 {self.name}: 执行成功")
-                self._status = NodeStatus.SUCCESS
                 return NodeStatus.SUCCESS
             else:
                 context.log(f"代码节点 {self.name}: 执行失败 - {result.stderr}")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
                 
         except subprocess.TimeoutExpired:
             context.log(f"代码节点 {self.name}: 执行超时")
-            self._status = NodeStatus.FAILURE
             return NodeStatus.FAILURE
         except Exception as e:
             context.log(f"代码节点 {self.name}: 执行出错 - {e}")
-            self._status = NodeStatus.FAILURE
             return NodeStatus.FAILURE
     
     def to_dict(self) -> Dict[str, Any]:
@@ -377,16 +330,9 @@ class ScriptNode(ActionNode):
         self.script_path = self.config.get("script_path", "")
         self.loop = self.config.get("loop", False)
     
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
-        if not context.check_running():
-            return NodeStatus.ABORTED
-        
+    def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
         if not self.script_path:
             context.log(f"脚本节点 {self.name}: 未配置脚本路径")
-            self._status = NodeStatus.FAILURE
             return NodeStatus.FAILURE
         
         try:
@@ -396,7 +342,6 @@ class ScriptNode(ActionNode):
             script_path = Path(self.script_path)
             if not script_path.exists():
                 context.log(f"脚本节点 {self.name}: 脚本文件不存在 {self.script_path}")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
             
             with open(script_path, 'r', encoding='utf-8') as f:
@@ -404,7 +349,6 @@ class ScriptNode(ActionNode):
             
             if not script_content.strip():
                 context.log(f"脚本节点 {self.name}: 脚本内容为空")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
             
             context.log(f"脚本节点 {self.name}: 执行脚本 {self.script_path}")
@@ -416,17 +360,14 @@ class ScriptNode(ActionNode):
             while executor.is_running:
                 if not context.check_running():
                     executor.stop_script()
-                    self._status = NodeStatus.ABORTED
                     return NodeStatus.ABORTED
                 time.sleep(0.1)
             
             context.log(f"脚本节点 {self.name}: 执行完成")
-            self._status = NodeStatus.SUCCESS
             return NodeStatus.SUCCESS
                 
         except Exception as e:
             context.log(f"脚本节点 {self.name}: 执行出错 - {e}")
-            self._status = NodeStatus.FAILURE
             return NodeStatus.FAILURE
     
     def to_dict(self) -> Dict[str, Any]:

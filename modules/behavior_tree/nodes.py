@@ -3,15 +3,15 @@
 
 包含所有节点类型的实现：
 - Node: 抽象基类
-- CompositeNode: 组合节点基类
-- DecoratorNode: 装饰节点基类
-- ConditionNode: 条件节点基类
-- ActionNode: 动作节点基类
+- CompositeNode: 组合节点基类（含重试、重复、超时装饰参数）
+- ConditionNode: 条件节点基类（含取反、重试装饰参数）
+- ActionNode: 动作节点基类（含重复、超时装饰参数）
 """
 
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
+import time
 
 if TYPE_CHECKING:
     from .context import ExecutionContext
@@ -69,6 +69,24 @@ class Node(ABC):
         """获取子节点列表"""
         pass
     
+    def update_config(self, key: str, value: Any) -> None:
+        """
+        更新配置参数并同步实例属性
+        
+        Args:
+            key: 配置键名
+            value: 配置值
+        """
+        if self.config is None:
+            self.config = {}
+        self.config[key] = value
+        
+        if hasattr(self, key):
+            try:
+                setattr(self, key, value)
+            except AttributeError:
+                pass
+    
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         return {
@@ -97,12 +115,18 @@ class Node(ABC):
 
 
 class CompositeNode(Node):
-    """组合节点基类 - 包含多个子节点"""
+    """组合节点基类 - 包含多个子节点，支持重试、重复、超时装饰参数"""
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
         self.children: List[Node] = []
         self._current_index = 0
+        self.retry_count = self.config.get("retry_count", 0)
+        self.repeat_count = self.config.get("repeat_count", 1)
+        self.timeout_ms = self.config.get("timeout_ms", 0)
+        self._current_retry = 0
+        self._current_repeat = 0
+        self._start_time: Optional[float] = None
     
     def get_children(self) -> List[Node]:
         """获取子节点列表"""
@@ -120,9 +144,91 @@ class CompositeNode(Node):
         """清空所有子节点"""
         self.children.clear()
     
+    def _reset_children(self) -> None:
+        """重置所有子节点"""
+        for child in self.children:
+            child.reset()
+    
+    def tick(self, context: "ExecutionContext") -> NodeStatus:
+        """执行组合节点逻辑，包含重试、重复、超时装饰"""
+        if not self.enabled:
+            return NodeStatus.SUCCESS
+        
+        if not context.check_running():
+            return NodeStatus.ABORTED
+        
+        if self._status != NodeStatus.RUNNING:
+            context.notify_node_status(self.node_id, "running")
+        
+        if self.timeout_ms > 0:
+            if self._start_time is None:
+                self._start_time = time.time() * 1000
+            
+            elapsed = time.time() * 1000 - self._start_time
+            if elapsed >= self.timeout_ms:
+                context.log(f"{self.name}: 执行超时")
+                self._status = NodeStatus.FAILURE
+                context.notify_node_status(self.node_id, "failure")
+                return NodeStatus.FAILURE
+        
+        if self.repeat_count == -1:
+            status = self._execute_composite(context)
+            self._status = status
+            if status == NodeStatus.SUCCESS:
+                self._reset_children()
+                return NodeStatus.RUNNING
+            if status == NodeStatus.FAILURE:
+                context.notify_node_status(self.node_id, "failure")
+            return status
+        
+        if self._current_repeat >= self.repeat_count:
+            self._current_retry = 0
+            self._current_repeat = 0
+            self._start_time = None
+            self._status = NodeStatus.SUCCESS
+            context.notify_node_status(self.node_id, "success")
+            return NodeStatus.SUCCESS
+        
+        status = self._execute_composite(context)
+        self._status = status
+        
+        if status == NodeStatus.RUNNING:
+            return NodeStatus.RUNNING
+        
+        if status == NodeStatus.FAILURE:
+            if self._current_retry < self.retry_count:
+                self._current_retry += 1
+                context.log(f"{self.name}: 重试 {self._current_retry}/{self.retry_count}")
+                self._reset_children()
+                return NodeStatus.RUNNING
+            self._current_retry = 0
+            self._current_repeat = 0
+            self._start_time = None
+            context.notify_node_status(self.node_id, "failure")
+            return NodeStatus.FAILURE
+        
+        self._current_repeat += 1
+        if self._current_repeat < self.repeat_count:
+            self._reset_children()
+            return NodeStatus.RUNNING
+        
+        self._current_retry = 0
+        self._current_repeat = 0
+        self._start_time = None
+        self._status = NodeStatus.SUCCESS
+        context.notify_node_status(self.node_id, "success")
+        return NodeStatus.SUCCESS
+    
+    def _execute_composite(self, context: "ExecutionContext") -> NodeStatus:
+        """子类实现的组合执行逻辑"""
+        raise NotImplementedError
+    
     def reset(self) -> None:
         """重置节点状态"""
         self._current_index = 0
+        self._current_retry = 0
+        self._current_repeat = 0
+        self._start_time = None
         self._status = NodeStatus.SUCCESS
         for child in self.children:
             child.reset()
@@ -134,68 +240,289 @@ class CompositeNode(Node):
         return data
 
 
-class DecoratorNode(Node):
-    """装饰节点基类 - 修饰单个子节点"""
+class ConditionNode(Node):
+    """条件节点基类 - 检查条件是否满足，支持取反、重试装饰参数，支持子节点串联执行"""
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
-        self.child: Optional[Node] = None
+        self.invert = self.config.get("invert", False)
+        self.retry_count = self.config.get("retry_count", 0)
+        self._current_retry = 0
+        self.children: List[Node] = []
+        self._current_child_index = 0
+        self._condition_done = False
     
     def get_children(self) -> List[Node]:
         """获取子节点列表"""
-        return [self.child] if self.child else []
+        return self.children
     
-    def set_child(self, child: Node) -> None:
-        """设置子节点"""
-        self.child = child
+    def add_child(self, child: Node) -> None:
+        """添加子节点"""
+        self.children.append(child)
     
     def remove_child(self, child_id: str) -> None:
         """移除子节点"""
-        if self.child and self.child.node_id == child_id:
-            self.child = None
+        self.children = [c for c in self.children if c.node_id != child_id]
+    
+    def tick(self, context: "ExecutionContext") -> NodeStatus:
+        """执行条件节点逻辑，包含取反、重试装饰，成功后执行子节点"""
+        if not self.enabled:
+            return NodeStatus.SUCCESS
+        
+        if not context.check_running():
+            return NodeStatus.ABORTED
+        
+        if self._status != NodeStatus.RUNNING:
+            context.notify_node_status(self.node_id, "running")
+        
+        if not self._condition_done:
+            if self._current_retry > self.retry_count:
+                self._current_retry = 0
+                self._status = NodeStatus.FAILURE
+                context.notify_node_status(self.node_id, "failure")
+                return NodeStatus.FAILURE
+            
+            status = self._execute_condition(context)
+            
+            if self.invert:
+                if status == NodeStatus.SUCCESS:
+                    status = NodeStatus.FAILURE
+                elif status == NodeStatus.FAILURE:
+                    status = NodeStatus.SUCCESS
+            
+            if status == NodeStatus.RUNNING:
+                self._status = status
+                return status
+            
+            if status == NodeStatus.FAILURE:
+                self._current_retry += 1
+                if self._current_retry <= self.retry_count:
+                    context.log(f"{self.name}: 重试 {self._current_retry}/{self.retry_count}")
+                    self.reset()
+                    return NodeStatus.RUNNING
+                
+                self._current_retry = 0
+                self._status = NodeStatus.FAILURE
+                context.notify_node_status(self.node_id, "failure")
+                return NodeStatus.FAILURE
+            
+            self._current_retry = 0
+            self._condition_done = True
+            
+            if not self.children:
+                self._condition_done = False
+                self._status = NodeStatus.SUCCESS
+                context.notify_node_status(self.node_id, "success")
+                return NodeStatus.SUCCESS
+            
+            return NodeStatus.RUNNING
+        
+        while self._current_child_index < len(self.children):
+            child = self.children[self._current_child_index]
+            
+            if not child.enabled:
+                self._current_child_index += 1
+                continue
+            
+            status = child.tick(context)
+            self._status = status
+            
+            if status == NodeStatus.RUNNING:
+                return NodeStatus.RUNNING
+            
+            if status == NodeStatus.FAILURE:
+                context.notify_node_status(self.node_id, "failure")
+                return NodeStatus.FAILURE
+            
+            self._current_child_index += 1
+        
+        self._current_child_index = 0
+        self._condition_done = False
+        self._status = NodeStatus.SUCCESS
+        context.notify_node_status(self.node_id, "success")
+        return NodeStatus.SUCCESS
+    
+    def _execute_condition(self, context: "ExecutionContext") -> NodeStatus:
+        """子类实现的条件检测逻辑"""
+        raise NotImplementedError
     
     def reset(self) -> None:
         """重置节点状态"""
+        self._current_retry = 0
         self._status = NodeStatus.SUCCESS
-        if self.child:
-            self.child.reset()
+        self._current_child_index = 0
+        self._condition_done = False
+        for child in self.children:
+            child.reset()
     
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         data = super().to_dict()
-        if self.child:
-            data["child"] = self.child.to_dict()
+        if self.children:
+            data["children"] = [child.to_dict() for child in self.children]
         return data
 
 
-class ConditionNode(Node):
-    """条件节点基类 - 检查条件是否满足"""
-    
-    def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
-        super().__init__(node_id, config)
-    
-    def get_children(self) -> List[Node]:
-        """条件节点无子节点"""
-        return []
-    
-    def reset(self) -> None:
-        """重置节点状态"""
-        self._status = NodeStatus.SUCCESS
-
-
 class ActionNode(Node):
-    """动作节点基类 - 执行具体操作"""
+    """动作节点基类 - 执行具体操作，支持重复、超时装饰参数，支持子节点串联执行"""
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
+        repeat_val = self.config.get("repeat_count", 1)
+        self.repeat_count = repeat_val if repeat_val == -1 else max(1, repeat_val)
+        self.timeout_ms = self.config.get("timeout_ms", 0)
+        self._current_repeat = 0
+        self._start_time: Optional[float] = None
+        self.children: List[Node] = []
+        self._current_child_index = 0
+        self._action_done = False
     
     def get_children(self) -> List[Node]:
-        """动作节点无子节点"""
-        return []
+        """获取子节点列表"""
+        return self.children
+    
+    def add_child(self, child: Node) -> None:
+        """添加子节点"""
+        self.children.append(child)
+    
+    def remove_child(self, child_id: str) -> None:
+        """移除子节点"""
+        self.children = [c for c in self.children if c.node_id != child_id]
+    
+    def tick(self, context: "ExecutionContext") -> NodeStatus:
+        """执行动作节点逻辑，包含重复、超时装饰，成功后执行子节点"""
+        if not self.enabled:
+            return NodeStatus.SUCCESS
+        
+        if not context.check_running():
+            return NodeStatus.ABORTED
+        
+        if self._status != NodeStatus.RUNNING:
+            context.notify_node_status(self.node_id, "running")
+        
+        if self.timeout_ms > 0:
+            if self._start_time is None:
+                self._start_time = time.time() * 1000
+            
+            elapsed = time.time() * 1000 - self._start_time
+            if elapsed >= self.timeout_ms:
+                context.log(f"{self.name}: 执行超时")
+                self._status = NodeStatus.FAILURE
+                context.notify_node_status(self.node_id, "failure")
+                return NodeStatus.FAILURE
+        
+        if not self._action_done:
+            if self.repeat_count == -1:
+                status = self._execute_action(context)
+                self._status = status
+                if status == NodeStatus.SUCCESS:
+                    self._action_done = True
+                    if self.children:
+                        return NodeStatus.RUNNING
+                    self._action_done = False
+                    return NodeStatus.RUNNING
+                if status == NodeStatus.FAILURE:
+                    context.notify_node_status(self.node_id, "failure")
+                return status
+            
+            if self._current_repeat >= self.repeat_count:
+                self._current_repeat = 0
+                self._start_time = None
+                self._action_done = True
+                if not self.children:
+                    self._action_done = False
+                    self._status = NodeStatus.SUCCESS
+                    context.notify_node_status(self.node_id, "success")
+                    return NodeStatus.SUCCESS
+                return NodeStatus.RUNNING
+            
+            status = self._execute_action(context)
+            self._status = status
+            
+            if status == NodeStatus.RUNNING:
+                return NodeStatus.RUNNING
+            
+            if status == NodeStatus.FAILURE:
+                self._current_repeat = 0
+                self._start_time = None
+                context.notify_node_status(self.node_id, "failure")
+                return NodeStatus.FAILURE
+            
+            self._current_repeat += 1
+            if self._current_repeat < self.repeat_count:
+                self._start_time = None
+                return NodeStatus.RUNNING
+            
+            self._current_repeat = 0
+            self._start_time = None
+            self._action_done = True
+            if not self.children:
+                self._action_done = False
+                self._status = NodeStatus.SUCCESS
+                context.notify_node_status(self.node_id, "success")
+                return NodeStatus.SUCCESS
+            return NodeStatus.RUNNING
+        
+        while self._current_child_index < len(self.children):
+            child = self.children[self._current_child_index]
+            
+            if not child.enabled:
+                self._current_child_index += 1
+                continue
+            
+            status = child.tick(context)
+            self._status = status
+            
+            if status == NodeStatus.RUNNING:
+                return NodeStatus.RUNNING
+            
+            if status == NodeStatus.FAILURE:
+                context.notify_node_status(self.node_id, "failure")
+                return NodeStatus.FAILURE
+            
+            self._current_child_index += 1
+        
+        self._current_child_index = 0
+        self._action_done = False
+        
+        if self.repeat_count == -1:
+            self._status = NodeStatus.RUNNING
+            return NodeStatus.RUNNING
+        
+        self._status = NodeStatus.SUCCESS
+        context.notify_node_status(self.node_id, "success")
+        return NodeStatus.SUCCESS
+    
+    def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
+        """子类实现的动作执行逻辑"""
+        raise NotImplementedError
     
     def reset(self) -> None:
         """重置节点状态"""
+        self._current_repeat = 0
+        self._start_time = None
         self._status = NodeStatus.SUCCESS
+        self._current_child_index = 0
+        self._action_done = False
+        for child in self.children:
+            child.reset()
+    
+    def reset_all(self) -> None:
+        """完全重置节点状态（包括重复计数）"""
+        self._current_repeat = 0
+        self._start_time = None
+        self._status = NodeStatus.SUCCESS
+        self._current_child_index = 0
+        self._action_done = False
+        for child in self.children:
+            child.reset()
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """序列化为字典"""
+        data = super().to_dict()
+        if self.children:
+            data["children"] = [child.to_dict() for child in self.children]
+        return data
 
 
 class SequenceNode(CompositeNode):
@@ -208,10 +535,7 @@ class SequenceNode(CompositeNode):
     - 子节点返回 RUNNING 时记录位置并返回 RUNNING
     """
     
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
+    def _execute_composite(self, context: "ExecutionContext") -> NodeStatus:
         if not self.children:
             return NodeStatus.SUCCESS
         
@@ -233,11 +557,8 @@ class SequenceNode(CompositeNode):
             
             self._current_index += 1
         
+        self._current_index = 0
         return NodeStatus.SUCCESS
-    
-    def to_dict(self) -> Dict[str, Any]:
-        data = super().to_dict()
-        return data
 
 
 class SelectorNode(CompositeNode):
@@ -250,10 +571,7 @@ class SelectorNode(CompositeNode):
     - 子节点返回 RUNNING 时记录位置并返回 RUNNING
     """
     
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.enabled:
-            return NodeStatus.FAILURE
-        
+    def _execute_composite(self, context: "ExecutionContext") -> NodeStatus:
         if not self.children:
             return NodeStatus.FAILURE
         
@@ -285,6 +603,7 @@ class ParallelNode(CompositeNode):
     同时执行所有子节点：
     - RequireAll: 所有子节点成功才成功
     - RequireOne: 任一子节点成功即成功
+    - 已完成的子节点不会重复执行
     """
     
     SUCCESS_POLICY_ALL = "require_all"
@@ -293,12 +612,9 @@ class ParallelNode(CompositeNode):
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
         self.success_policy = self.config.get("success_policy", self.SUCCESS_POLICY_ALL)
-        self._running_children: List[int] = []
+        self._child_statuses: Dict[int, NodeStatus] = {}
     
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
+    def _execute_composite(self, context: "ExecutionContext") -> NodeStatus:
         if not self.children:
             return NodeStatus.SUCCESS
         
@@ -310,11 +626,22 @@ class ParallelNode(CompositeNode):
             if not child.enabled:
                 continue
             
+            if i in self._child_statuses:
+                cached_status = self._child_statuses[i]
+                if cached_status == NodeStatus.SUCCESS:
+                    success_count += 1
+                    continue
+                elif cached_status == NodeStatus.FAILURE:
+                    failure_count += 1
+                    continue
+            
             status = child.tick(context)
             
             if status == NodeStatus.SUCCESS:
+                self._child_statuses[i] = NodeStatus.SUCCESS
                 success_count += 1
             elif status == NodeStatus.FAILURE:
+                self._child_statuses[i] = NodeStatus.FAILURE
                 failure_count += 1
             elif status == NodeStatus.RUNNING:
                 running_count += 1
@@ -333,178 +660,19 @@ class ParallelNode(CompositeNode):
     
     def reset(self) -> None:
         super().reset()
-        self._running_children.clear()
-
-
-class InverterNode(DecoratorNode):
-    """
-    取反节点
+        self._child_statuses.clear()
     
-    反转子节点的执行结果：
-    - SUCCESS → FAILURE
-    - FAILURE → SUCCESS
-    - RUNNING → RUNNING
-    """
-    
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
-        if not self.child:
-            return NodeStatus.FAILURE
-        
-        status = self.child.tick(context)
-        
-        if status == NodeStatus.SUCCESS:
-            self._status = NodeStatus.FAILURE
-            return NodeStatus.FAILURE
-        elif status == NodeStatus.FAILURE:
-            self._status = NodeStatus.SUCCESS
-            return NodeStatus.SUCCESS
-        else:
-            self._status = NodeStatus.RUNNING
-            return NodeStatus.RUNNING
-
-
-class RepeaterNode(DecoratorNode):
-    """
-    重复节点
-    
-    重复执行子节点指定次数：
-    - count > 0: 重复指定次数
-    - count == -1: 无限重复
-    - 子节点失败时停止
-    """
-    
-    def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
-        super().__init__(node_id, config)
-        self.repeat_count = self.config.get("count", -1)
-        self._current_count = 0
-    
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
-        if not self.child:
-            return NodeStatus.FAILURE
-        
-        if self.repeat_count == -1:
-            status = self.child.tick(context)
-            self._status = status
-            if status == NodeStatus.FAILURE:
-                return NodeStatus.FAILURE
-            if status == NodeStatus.SUCCESS:
-                self.child.reset()
-            return NodeStatus.RUNNING
-        
-        while self._current_count < self.repeat_count:
-            status = self.child.tick(context)
-            self._status = status
-            
-            if status == NodeStatus.RUNNING:
-                return NodeStatus.RUNNING
-            
-            if status == NodeStatus.FAILURE:
-                return NodeStatus.FAILURE
-            
-            self._current_count += 1
-            self.child.reset()
-        
-        return NodeStatus.SUCCESS
-    
-    def reset(self) -> None:
-        super().reset()
-        self._current_count = 0
-
-
-class RetryNode(DecoratorNode):
-    """
-    重试节点
-    
-    子节点失败时重试指定次数
-    """
-    
-    def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
-        super().__init__(node_id, config)
-        self.max_retries = self.config.get("max_retries", 3)
-        self._retry_count = 0
-    
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
-        if not self.child:
-            return NodeStatus.FAILURE
-        
-        while self._retry_count <= self.max_retries:
-            status = self.child.tick(context)
-            self._status = status
-            
-            if status == NodeStatus.RUNNING:
-                return NodeStatus.RUNNING
-            
-            if status == NodeStatus.SUCCESS:
-                return NodeStatus.SUCCESS
-            
-            self._retry_count += 1
-            self.child.reset()
-        
-        return NodeStatus.FAILURE
-    
-    def reset(self) -> None:
-        super().reset()
-        self._retry_count = 0
-
-
-class TimeoutNode(DecoratorNode):
-    """
-    超时节点
-    
-    限制子节点的执行时间
-    """
-    
-    def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
-        super().__init__(node_id, config)
-        self.timeout_ms = self.config.get("timeout_ms", 5000)
-        self._start_time: Optional[float] = None
-    
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
-        if not self.child:
-            return NodeStatus.FAILURE
-        
-        import time
-        
-        if self._start_time is None:
-            self._start_time = time.time() * 1000
-        
-        elapsed = time.time() * 1000 - self._start_time
-        
-        if elapsed >= self.timeout_ms:
-            self._status = NodeStatus.FAILURE
-            return NodeStatus.FAILURE
-        
-        status = self.child.tick(context)
-        self._status = status
-        return status
-    
-    def reset(self) -> None:
-        super().reset()
-        self._start_time = None
+    def _reset_children(self) -> None:
+        """重置所有子节点和状态缓存"""
+        super()._reset_children()
+        self._child_statuses.clear()
 
 
 NODE_TYPE_MAP: Dict[str, type] = {
     "SequenceNode": SequenceNode,
     "SelectorNode": SelectorNode,
     "ParallelNode": ParallelNode,
-    "InverterNode": InverterNode,
-    "RepeaterNode": RepeaterNode,
-    "RetryNode": RetryNode,
-    "TimeoutNode": TimeoutNode,
     "CompositeNode": CompositeNode,
-    "DecoratorNode": DecoratorNode,
     "ConditionNode": ConditionNode,
     "ActionNode": ActionNode,
 }

@@ -27,28 +27,13 @@ class NumberConditionNode(ConditionNode):
         self.save_value = self.config.get("save_value", True)
         self.value_key = self.config.get("value_key", "last_number_value")
     
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        """
-        执行数字条件检测
-        
-        Args:
-            context: 执行上下文
-            
-        Returns:
-            检测结果状态
-        """
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
-        if not context.check_running():
-            return NodeStatus.ABORTED
-        
+    def _execute_condition(self, context: "ExecutionContext") -> NodeStatus:
+        """执行数字条件检测"""
         try:
             screenshot = context.get_screenshot(self.region)
             
             if screenshot is None:
                 context.log(f"数字节点 {self.name}: 截图失败")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
             
             from utils.recognition import NumberRecognizer
@@ -57,14 +42,12 @@ class NumberConditionNode(ConditionNode):
             
             if text is None:
                 context.log(f"数字节点 {self.name}: OCR识别失败")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
             
             number = NumberRecognizer.parse_number(text)
             
             if number is None:
                 context.log(f"数字节点 {self.name}: 无法解析数字 '{text}'")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
             
             if self.save_value:
@@ -74,16 +57,13 @@ class NumberConditionNode(ConditionNode):
             
             if result:
                 context.log(f"数字节点 {self.name}: 条件满足 ({number} {self.compare_mode} {self.threshold})")
-                self._status = NodeStatus.SUCCESS
                 return NodeStatus.SUCCESS
             else:
                 context.log(f"数字节点 {self.name}: 条件不满足 ({number} {self.compare_mode} {self.threshold})")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
                 
         except Exception as e:
             context.log(f"数字节点 {self.name}: 执行出错 - {e}")
-            self._status = NodeStatus.FAILURE
             return NodeStatus.FAILURE
     
     def _compare(self, value: int, threshold: int, mode: str) -> bool:

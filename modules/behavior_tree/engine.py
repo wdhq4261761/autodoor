@@ -25,7 +25,7 @@ def register_adapters() -> None:
         from modules.bt_adapters.variable_adapter import VariableConditionNode
         from modules.bt_adapters.action_adapters import (
             KeyPressNode, MouseClickNode, MouseMoveNode,
-            DelayNode, SetVariableNode, ScriptNode
+            DelayNode, SetVariableNode, ScriptNode, CodeNode
         )
         
         NODE_TYPE_MAP["OCRConditionNode"] = OCRConditionNode
@@ -60,13 +60,15 @@ class BehaviorTreeEngine:
     - 状态监控
     """
     
-    def __init__(self, app: "AutoDoorOCR"):
+    def __init__(self, app: "AutoDoorOCR", on_complete: Optional[callable] = None, on_node_status: Optional[callable] = None):
         self.app = app
         self.root_node: Optional[Node] = None
         self.context: Optional[ExecutionContext] = None
         self.execution_thread: Optional[threading.Thread] = None
+        self.on_complete = on_complete
+        self.on_node_status = on_node_status
         
-        self.tick_interval: float = 0.05
+        self.tick_interval: float = 0.001  # 1ms，最小延迟
         self._is_running = False
         self._is_paused = False
         self._tree_name = ""
@@ -142,15 +144,37 @@ class BehaviorTreeEngine:
         node = node_class(node_id, config)
         
         if hasattr(node, "children"):
-            for child_id in node_data.get("children", []):
-                child = self._build_tree(child_id, nodes_data)
-                if child:
-                    node.add_child(child)
+            children_data = node_data.get("children", [])
+            for child_item in children_data:
+                if isinstance(child_item, str):
+                    child_id = child_item
+                elif isinstance(child_item, dict):
+                    child_id = child_item.get("id", "")
+                    if child_id and child_id not in nodes_data:
+                        nodes_data[child_id] = child_item
+                else:
+                    continue
+                
+                if child_id:
+                    child = self._build_tree(child_id, nodes_data)
+                    if child:
+                        node.add_child(child)
         
         if hasattr(node, "child") and "child" in node_data:
-            child = self._build_tree(node_data["child"], nodes_data)
-            if child:
-                node.set_child(child)
+            child_data = node_data["child"]
+            if isinstance(child_data, str):
+                child_id = child_data
+            elif isinstance(child_data, dict):
+                child_id = child_data.get("id", "")
+                if child_id and child_id not in nodes_data:
+                    nodes_data[child_id] = child_data
+            else:
+                child_id = None
+            
+            if child_id:
+                child = self._build_tree(child_id, nodes_data)
+                if child:
+                    node.set_child(child)
         
         return node
     
@@ -241,6 +265,10 @@ class BehaviorTreeEngine:
         self._is_running = True
         self._is_paused = False
         self.context = ExecutionContext(self.app)
+        
+        if self.on_node_status:
+            self.context.set_node_status_callback(self.on_node_status)
+        
         self.context.start()
         
         self.execution_thread = threading.Thread(target=self._execution_loop, daemon=True)
@@ -303,6 +331,14 @@ class BehaviorTreeEngine:
                 self.app.logging_manager.log_message(f"[BT] 执行出错: {e}")
         finally:
             self._is_running = False
+            if self.on_complete:
+                try:
+                    if hasattr(self.app, 'root') and hasattr(self.app.root, 'after'):
+                        self.app.root.after(0, self.on_complete)
+                    else:
+                        self.on_complete()
+                except Exception:
+                    pass
     
     def get_status(self) -> Dict[str, Any]:
         """

@@ -1,7 +1,7 @@
 """
 行为树编辑器
 
-整合所有编辑器组件
+整合所有编辑器组件，支持自动保存和崩溃恢复
 """
 
 import customtkinter as ctk
@@ -17,6 +17,8 @@ from ui.bt_editor.undo_redo import (
     CommandManager, AddNodeCommand, RemoveNodeCommand, 
     MoveNodeCommand, AddConnectionCommand
 )
+from modules.persistence import AutoSaveManager, CrashRecoveryHandler, FileRecoveryHandler
+from modules.behavior_tree.serializer import BehaviorTreeSerializer
 
 if TYPE_CHECKING:
     from autodoor import AutoDoorOCR
@@ -29,18 +31,83 @@ class BehaviorTreeEditor(ctk.CTkFrame):
         super().__init__(master, **kwargs)
         self.app = app
         
-        self.tree_data: Dict[str, Any] = {}
+        self.tree_data: Dict[str, Any] = BehaviorTreeSerializer.create_empty_tree()
         self.file_path: Optional[str] = None
         self._node_counter = 0
         self._is_modified = False
         
         self.command_manager = CommandManager(max_history=50)
         
+        from modules.behavior_tree import BehaviorTreeEngine
+        self._engine = BehaviorTreeEngine(
+            self.app, 
+            on_complete=self._on_execution_complete,
+            on_node_status=self._on_node_status
+        )
+        
         self._dark_colors = Theme.get_dark_colors()
         self.configure(fg_color=self._dark_colors['bg_primary'], corner_radius=0)
         
+        self._init_persistence()
         self._create_ui()
         self._bind_shortcuts()
+        self._check_recovery()
+        
+    def _init_persistence(self):
+        """初始化持久化功能"""
+        self.auto_save_manager = AutoSaveManager(
+            get_data_func=self.get_tree_data,
+            on_save_callback=self._on_autosave_complete
+        )
+        
+        self.crash_recovery_handler = CrashRecoveryHandler(
+            get_data_func=self.get_tree_data,
+            log_func=self._log
+        )
+        
+        self.file_recovery_handler = FileRecoveryHandler(
+            log_func=self._log
+        )
+        
+        self.crash_recovery_handler.install()
+        self.auto_save_manager.start()
+        
+    def _log(self, message: str):
+        """日志记录"""
+        if hasattr(self.app, 'log'):
+            self.app.log(message)
+            
+    def _check_recovery(self):
+        """检查是否有恢复数据"""
+        recovery = self.file_recovery_handler.check_and_get_recovery()
+        
+        if recovery:
+            self._load_recovery_data(recovery)
+                
+    def _load_recovery_data(self, recovery: Dict[str, Any]):
+        """加载恢复数据"""
+        data = recovery["data"]
+        data = BehaviorTreeSerializer.migrate_data(data)
+        self.tree_data = data
+        self.canvas.load_tree(data)
+        self._is_modified = True
+        
+        max_counter = 0
+        for node_id in data.get("nodes", {}).keys():
+            if node_id.startswith("node_"):
+                try:
+                    num = int(node_id[5:])
+                    max_counter = max(max_counter, num)
+                except ValueError:
+                    pass
+        self._node_counter = max_counter
+        
+        self.toolbar.set_status(f"已从{recovery['source']}恢复")
+        
+    def _on_autosave_complete(self, success: bool):
+        """自动保存完成回调"""
+        if success:
+            self._is_modified = False
     
     def _create_ui(self):
         """创建UI"""
@@ -93,7 +160,8 @@ class BehaviorTreeEditor(ctk.CTkFrame):
             self.app,
             on_node_select=self._on_node_select,
             on_node_move=self._on_node_move,
-            on_connection_add=self._on_connection_add
+            on_connection_add=self._on_connection_add,
+            on_node_deselect=self._on_node_deselect
         )
         self.canvas.pack(side="left", fill="both", expand=True)
         
@@ -132,6 +200,12 @@ class BehaviorTreeEditor(ctk.CTkFrame):
         
         def make_handler(cb, key):
             def handler(e):
+                if key in ("<Delete>", "<BackSpace>"):
+                    focused = self.winfo_toplevel().focus_get()
+                    if focused:
+                        widget_type = str(type(focused).__name__)
+                        if widget_type in ("CTkEntry", "Entry", "CTkTextbox", "Text"):
+                            return None
                 cb()
                 return "break"
             return handler
@@ -176,6 +250,17 @@ class BehaviorTreeEditor(ctk.CTkFrame):
             self.file_path = file_path
             self._is_modified = False
             self.command_manager.clear()
+            
+            max_counter = 0
+            for node_id in self.tree_data.get("nodes", {}).keys():
+                if node_id.startswith("node_"):
+                    try:
+                        num = int(node_id[5:])
+                        max_counter = max(max_counter, num)
+                    except ValueError:
+                        pass
+            self._node_counter = max_counter
+            
             self.toolbar.set_status(f"已加载: {self.tree_data.get('name', '未命名')}")
             self._update_undo_redo_buttons()
         else:
@@ -214,20 +299,41 @@ class BehaviorTreeEditor(ctk.CTkFrame):
     
     def _on_run(self):
         """运行"""
-        from modules.behavior_tree import BehaviorTreeEngine
-        
-        engine = BehaviorTreeEngine(self.app)
-        engine.load_tree(self.canvas.get_tree_data())
-        engine.start()
+        self.property_panel._force_save_focus()
+        self.property_panel._save_current_values()
+        self._engine.load_tree(self.canvas.get_tree_data())
+        self._engine.start()
         self.toolbar.set_running(True)
     
     def _on_stop(self):
         """停止"""
-        from modules.behavior_tree import BehaviorTreeEngine
-        
-        engine = BehaviorTreeEngine(self.app)
-        engine.stop()
+        self._engine.stop()
+        self.canvas.reset_all_status()
         self.toolbar.set_running(False)
+    
+    def _on_execution_complete(self):
+        """执行完成回调"""
+        self.toolbar.set_running(False)
+    
+    def _on_node_status(self, node_id: str, status: str):
+        """节点状态变化回调（从后台线程调用）"""
+        try:
+            if hasattr(self.app, 'root') and hasattr(self.app.root, 'after'):
+                self.app.root.after(0, lambda: self._update_node_status(node_id, status))
+        except Exception:
+            pass
+    
+    def _update_node_status(self, node_id: str, status: str):
+        """更新节点状态（主线程）"""
+        from ui.bt_editor.canvas import NodeExecutionStatus
+        status_map = {
+            "running": NodeExecutionStatus.RUNNING,
+            "success": NodeExecutionStatus.SUCCESS,
+            "failure": NodeExecutionStatus.FAILURE,
+            "aborted": NodeExecutionStatus.ABORTED,
+        }
+        node_status = status_map.get(status, NodeExecutionStatus.IDLE)
+        self.canvas.set_node_status(node_id, node_status)
     
     def _on_toggle_run(self):
         """切换运行状态"""
@@ -253,9 +359,18 @@ class BehaviorTreeEditor(ctk.CTkFrame):
         self._node_counter += 1
         node_id = f"node_{self._node_counter}"
         
-        import random
-        x = 200 + random.randint(0, 200)
-        y = 100 + random.randint(0, 100)
+        canvas_width = self.canvas.canvas.winfo_width() or 800
+        canvas_height = self.canvas.canvas.winfo_height() or 600
+        
+        x = (canvas_width / 2 - self.canvas.pan_x) / self.canvas.zoom
+        y = (canvas_height / 2 - self.canvas.pan_y) / self.canvas.zoom
+        
+        offset = 0
+        for existing_node in self.canvas.nodes.values():
+            if abs(existing_node.x - x) < 160 and abs(existing_node.y - y) < 70:
+                offset += 80
+        
+        x += offset
         
         command = AddNodeCommand(
             canvas=self.canvas,
@@ -267,17 +382,32 @@ class BehaviorTreeEditor(ctk.CTkFrame):
         self.command_manager.execute(command)
         self._is_modified = True
         self._update_undo_redo_buttons()
+        self._notify_content_changed()
     
     def _on_node_select(self, node_id: str, node_type: str):
         """节点选中"""
-        node_data = {
-            "id": node_id,
-            "type": node_type,
-            "name": "",
-            "enabled": True,
-            "config": {}
-        }
+        node = self.canvas.nodes.get(node_id)
+        if node:
+            node_data = {
+                "id": node_id,
+                "type": node_type,
+                "name": node.name,
+                "enabled": node.enabled,
+                "config": node.config or {}
+            }
+        else:
+            node_data = {
+                "id": node_id,
+                "type": node_type,
+                "name": "",
+                "enabled": True,
+                "config": {}
+            }
         self.property_panel.load_node(node_id, node_type, node_data)
+    
+    def _on_node_deselect(self):
+        """节点取消选中"""
+        self.property_panel.save_and_clear()
     
     def _on_node_move(self, node_id: str, old_x: float, old_y: float, new_x: float, new_y: float):
         """节点移动"""
@@ -305,10 +435,14 @@ class BehaviorTreeEditor(ctk.CTkFrame):
     
     def _on_property_change(self, node_id: str, key: str, value: Any):
         """属性变更"""
+        if node_id and node_id in self.canvas.nodes:
+            node = self.canvas.nodes[node_id]
+            node.update_config(key, value)
         self._is_modified = True
+        self._notify_content_changed()
     
     def _on_delete_selected(self):
-        """删除选中节点"""
+        """删除选中节点或连线"""
         if self.canvas.selected_node:
             command = RemoveNodeCommand(
                 canvas=self.canvas,
@@ -317,6 +451,10 @@ class BehaviorTreeEditor(ctk.CTkFrame):
             self.command_manager.execute(command)
             self._is_modified = True
             self._update_undo_redo_buttons()
+        elif self.canvas.selected_connection:
+            self.canvas.remove_selected_connection()
+            self._is_modified = True
+            self._notify_content_changed()
     
     def _on_undo(self):
         """撤销"""
@@ -373,8 +511,30 @@ class BehaviorTreeEditor(ctk.CTkFrame):
     
     def get_tree_data(self) -> Dict[str, Any]:
         """获取行为树数据"""
-        return self.canvas.get_tree_data()
+        data = self.canvas.get_tree_data()
+        data = BehaviorTreeSerializer.update_metadata(data, save_type="auto")
+        data = BehaviorTreeSerializer.update_editor_state(
+            data,
+            selected_node=self.canvas.selected_node,
+            selected_connection=getattr(self.canvas, 'selected_connection', None)
+        )
+        return data
     
     def is_modified(self) -> bool:
         """是否已修改"""
         return self._is_modified
+    
+    def _notify_content_changed(self):
+        """通知内容变更"""
+        self.auto_save_manager.on_content_changed()
+        
+    def save_now(self):
+        """立即执行自动保存"""
+        self.auto_save_manager.save_now()
+        
+    def destroy(self):
+        """销毁前保存"""
+        self.auto_save_manager.save_now()
+        self.auto_save_manager.stop()
+        self.crash_recovery_handler.uninstall()
+        super().destroy()

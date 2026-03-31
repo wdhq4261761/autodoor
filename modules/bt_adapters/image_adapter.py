@@ -43,34 +43,18 @@ class ImageConditionNode(ConditionNode):
         except Exception:
             return None
     
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        """
-        执行图像条件检测
-        
-        Args:
-            context: 执行上下文
-            
-        Returns:
-            检测结果状态
-        """
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
-        if not context.check_running():
-            return NodeStatus.ABORTED
-        
+    def _execute_condition(self, context: "ExecutionContext") -> NodeStatus:
+        """执行图像条件检测"""
         try:
             template = self._load_template()
             if template is None:
                 context.log(f"图像节点 {self.name}: 模板加载失败")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
             
             screenshot = context.get_screenshot(self.region)
             
             if screenshot is None:
                 context.log(f"图像节点 {self.name}: 截图失败")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
             
             from utils.recognition import ImageRecognizer
@@ -88,16 +72,13 @@ class ImageConditionNode(ConditionNode):
                     abs_y = self.region[1] + position[1]
                     context.blackboard.set(self.position_key, (abs_x, abs_y))
                 context.log(f"图像节点 {self.name}: 匹配成功 ({score:.2%})")
-                self._status = NodeStatus.SUCCESS
                 return NodeStatus.SUCCESS
             else:
                 context.log(f"图像节点 {self.name}: 未匹配到目标图像")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
                 
         except Exception as e:
             context.log(f"图像节点 {self.name}: 执行出错 - {e}")
-            self._status = NodeStatus.FAILURE
             return NodeStatus.FAILURE
     
     def to_dict(self) -> Dict[str, Any]:

@@ -27,10 +27,6 @@ NODE_CATEGORY_MAP = {
     "SequenceNode": "composite",
     "SelectorNode": "composite",
     "ParallelNode": "composite",
-    "InverterNode": "decorator",
-    "RepeaterNode": "decorator",
-    "RetryNode": "decorator",
-    "TimeoutNode": "decorator",
     "OCRConditionNode": "condition",
     "ImageConditionNode": "condition",
     "ColorConditionNode": "condition",
@@ -42,16 +38,13 @@ NODE_CATEGORY_MAP = {
     "DelayNode": "action",
     "SetVariableNode": "action",
     "ScriptNode": "action",
+    "CodeNode": "action",
 }
 
 NODE_DISPLAY_NAMES = {
     "SequenceNode": "顺序",
     "SelectorNode": "选择",
     "ParallelNode": "并行",
-    "InverterNode": "取反",
-    "RepeaterNode": "重复",
-    "RetryNode": "重试",
-    "TimeoutNode": "超时",
     "OCRConditionNode": "OCR检测",
     "ImageConditionNode": "图像匹配",
     "ColorConditionNode": "颜色检测",
@@ -87,7 +80,7 @@ PORT_RADIUS = 8
 class NodeItem:
     """画布节点项"""
     
-    def __init__(self, canvas: tk.Canvas, node_id: str, node_type: str, x: float, y: float):
+    def __init__(self, canvas: tk.Canvas, node_id: str, node_type: str, x: float, y: float, name: str = "", config: dict = None, enabled: bool = True, zoom: float = 1.0, pan_x: float = 0, pan_y: float = 0):
         self.canvas = canvas
         self.node_id = node_id
         self.node_type = node_type
@@ -95,6 +88,12 @@ class NodeItem:
         self.y = y
         self.width = 140
         self.height = 56
+        self.name = name
+        self.config = config or {}
+        self.enabled = enabled
+        self._zoom = zoom
+        self._pan_x = pan_x
+        self._pan_y = pan_y
         
         self._status = NodeExecutionStatus.IDLE
         self._selected = False
@@ -107,15 +106,49 @@ class NodeItem:
         
         self._create_visuals()
     
+    def set_zoom(self, zoom: float):
+        """设置缩放级别"""
+        self._zoom = zoom
+    
+    def set_pan(self, pan_x: float, pan_y: float):
+        """设置平移偏移"""
+        self._pan_x = pan_x
+        self._pan_y = pan_y
+    
+    def _scale(self, value: float) -> float:
+        """应用缩放"""
+        return value * self._zoom
+    
+    def _transform_x(self, x: float) -> float:
+        """转换X坐标（缩放+平移）"""
+        return x * self._zoom + self._pan_x
+    
+    def _transform_y(self, y: float) -> float:
+        """转换Y坐标（缩放+平移）"""
+        return y * self._zoom + self._pan_y
+    
+    def update_config(self, key: str, value) -> None:
+        """更新配置参数"""
+        if key in ["name", "description", "enabled"]:
+            setattr(self, key, value)
+        else:
+            if self.config is None:
+                self.config = {}
+            self.config[key] = value
+    
     def _create_visuals(self):
         """创建视觉元素"""
         shadow_offset = 3
+        w = self._scale(self.width)
+        h = self._scale(self.height)
+        x = self._transform_x(self.x)
+        y = self._transform_y(self.y)
         
         self.shadow = self.canvas.create_rectangle(
-            self.x - self.width/2 + shadow_offset,
-            self.y - self.height/2 + shadow_offset,
-            self.x + self.width/2 + shadow_offset,
-            self.y + self.height/2 + shadow_offset,
+            x - w/2 + self._scale(shadow_offset),
+            y - h/2 + self._scale(shadow_offset),
+            x + w/2 + self._scale(shadow_offset),
+            y + h/2 + self._scale(shadow_offset),
             fill="#000000",
             stipple="gray50",
             outline="",
@@ -123,10 +156,10 @@ class NodeItem:
         )
         
         self.rect = self.canvas.create_rectangle(
-            self.x - self.width/2,
-            self.y - self.height/2,
-            self.x + self.width/2,
-            self.y + self.height/2,
+            x - w/2,
+            y - h/2,
+            x + w/2,
+            y + h/2,
             fill=self._dark_colors['node_bg'],
             outline=self._dark_colors['node_border'],
             width=1,
@@ -134,10 +167,10 @@ class NodeItem:
         )
         
         self.color_bar = self.canvas.create_rectangle(
-            self.x - self.width/2,
-            self.y - self.height/2,
-            self.x - self.width/2 + 4,
-            self.y + self.height/2,
+            x - w/2,
+            y - h/2,
+            x - w/2 + self._scale(4),
+            y + h/2,
             fill=self._color_config['bg'],
             outline="",
             tags=("node_color", self.node_id)
@@ -145,39 +178,41 @@ class NodeItem:
         
         display_name = self._get_display_name()
         self.text = self.canvas.create_text(
-            self.x + 10,
-            self.y,
+            x + self._scale(10),
+            y,
             text=display_name,
             fill=self._dark_colors['text_primary'],
-            font=("Microsoft YaHei", 10, "bold"),
+            font=("Microsoft YaHei", max(8, int(10 * self._zoom)), "bold"),
             anchor="center",
             tags=("node_text", self.node_id)
         )
         
+        status_radius = self._scale(10)
         self.status_bg = self.canvas.create_oval(
-            self.x + self.width/2 - 24,
-            self.y - 12,
-            self.x + self.width/2 - 4,
-            self.y + 12,
+            x + w/2 - self._scale(24),
+            y - status_radius,
+            x + w/2 - self._scale(4),
+            y + status_radius,
             fill=self._dark_colors['bg_tertiary'],
             outline="",
             tags=("node_status_bg", self.node_id)
         )
         
         self.status_icon = self.canvas.create_text(
-            self.x + self.width/2 - 14,
-            self.y,
+            x + w/2 - self._scale(14),
+            y,
             text="",
             fill=self._dark_colors['text_secondary'],
-            font=("Arial", 10, "bold"),
+            font=("Arial", max(8, int(10 * self._zoom)), "bold"),
             tags=("node_icon", self.node_id)
         )
         
+        port_radius = self._scale(PORT_RADIUS)
         self.input_port = self.canvas.create_oval(
-            self.x - PORT_RADIUS,
-            self.y - self.height/2 - PORT_RADIUS,
-            self.x + PORT_RADIUS,
-            self.y - self.height/2 + PORT_RADIUS,
+            x - port_radius,
+            y - h/2 - port_radius,
+            x + port_radius,
+            y - h/2 + port_radius,
             fill=self._dark_colors['bg_tertiary'],
             outline=self._dark_colors['border'],
             width=2,
@@ -185,10 +220,10 @@ class NodeItem:
         )
         
         self.output_port = self.canvas.create_oval(
-            self.x - PORT_RADIUS,
-            self.y + self.height/2 - PORT_RADIUS,
-            self.x + PORT_RADIUS,
-            self.y + self.height/2 + PORT_RADIUS,
+            x - port_radius,
+            y + h/2 - port_radius,
+            x + port_radius,
+            y + h/2 + port_radius,
             fill=self._color_config['bg'],
             outline=self._dark_colors['border'],
             width=2,
@@ -201,42 +236,45 @@ class NodeItem:
         """获取显示名称"""
         return NODE_DISPLAY_NAMES.get(self.node_type, self.node_type)
     
+    def redraw(self):
+        """重绘节点"""
+        self.canvas.delete(self.node_id)
+        self._create_visuals()
+    
     def move_to(self, x: float, y: float):
         """移动节点"""
-        dx = x - self.x
-        dy = y - self.y
         self.x = x
         self.y = y
-        self.canvas.move(self.node_id, dx, dy)
+        self.redraw()
     
     def get_bounds(self) -> tuple:
-        """获取边界"""
+        """获取边界（逻辑坐标）"""
         return (
             self.x - self.width/2, self.y - self.height/2,
             self.x + self.width/2, self.y + self.height/2
         )
     
     def contains_point(self, x: float, y: float) -> bool:
-        """检查点是否在节点内"""
+        """检查点是否在节点内（使用逻辑坐标）"""
         x1, y1, x2, y2 = self.get_bounds()
         return x1 <= x <= x2 and y1 <= y <= y2
     
     def get_input_port_pos(self) -> tuple:
-        """获取输入端口位置"""
+        """获取输入端口位置（逻辑坐标）"""
         return (self.x, self.y - self.height/2)
     
     def get_output_port_pos(self) -> tuple:
-        """获取输出端口位置"""
+        """获取输出端口位置（逻辑坐标）"""
         return (self.x, self.y + self.height/2)
     
     def is_on_input_port(self, x: float, y: float) -> bool:
-        """检查点是否在输入端口上"""
+        """检查点是否在输入端口上（使用逻辑坐标）"""
         px, py = self.get_input_port_pos()
         dist = math.sqrt((x - px)**2 + (y - py)**2)
         return dist <= PORT_RADIUS + 4
     
     def is_on_output_port(self, x: float, y: float) -> bool:
-        """检查点是否在输出端口上"""
+        """检查点是否在输出端口上（使用逻辑坐标）"""
         px, py = self.get_output_port_pos()
         dist = math.sqrt((x - px)**2 + (y - py)**2)
         return dist <= PORT_RADIUS + 4
@@ -323,6 +361,7 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
     def __init__(self, master, app, on_node_select: Optional[Callable] = None,
                  on_node_move: Optional[Callable] = None,
                  on_connection_add: Optional[Callable] = None,
+                 on_node_deselect: Optional[Callable] = None,
                  **kwargs):
         super().__init__(master, **kwargs)
         self.app = app
@@ -336,6 +375,7 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         self.on_node_select = on_node_select
         self.on_node_move = on_node_move
         self.on_connection_add = on_connection_add
+        self.on_node_deselect = on_node_deselect
         
         self.zoom = 1.0
         self.pan_x = 0
@@ -345,6 +385,10 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         self._drag_node: Optional[str] = None
         self._drag_start = (0, 0)
         self._drag_start_pos = (0, 0)
+        
+        self._panning = False
+        self._pan_start = (0, 0)
+        self._pan_start_offset = (0, 0)
         
         self._connecting = False
         self._connect_start_node: Optional[str] = None
@@ -378,14 +422,17 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         width = self.canvas.winfo_width() or 800
         height = self.canvas.winfo_height() or 600
         
-        for x in range(0, width + grid_size, grid_size):
+        offset_x = int(self.pan_x) % grid_size
+        offset_y = int(self.pan_y) % grid_size
+        
+        for x in range(-grid_size + offset_x, width + grid_size, grid_size):
             self.canvas.create_line(
                 x, 0, x, height,
                 fill=grid_color,
                 tags="grid"
             )
         
-        for y in range(0, height + grid_size, grid_size):
+        for y in range(-grid_size + offset_y, height + grid_size, grid_size):
             self.canvas.create_line(
                 0, y, width, y,
                 fill=grid_color,
@@ -412,8 +459,8 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
     
     def _on_motion(self, event):
         """鼠标移动事件"""
-        x = self.canvas.canvasx(event.x)
-        y = self.canvas.canvasy(event.y)
+        x = (self.canvas.canvasx(event.x) - self.pan_x) / self.zoom
+        y = (self.canvas.canvasy(event.y) - self.pan_y) / self.zoom
         
         for node_id, node in self.nodes.items():
             if node.is_on_output_port(x, y) or node.is_on_input_port(x, y):
@@ -424,8 +471,8 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
     
     def _on_click(self, event):
         """点击事件"""
-        x = self.canvas.canvasx(event.x)
-        y = self.canvas.canvasy(event.y)
+        x = (self.canvas.canvasx(event.x) - self.pan_x) / self.zoom
+        y = (self.canvas.canvasy(event.y) - self.pan_y) / self.zoom
         
         for node_id, node in self.nodes.items():
             if node.is_on_output_port(x, y):
@@ -449,11 +496,14 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
             return
         
         self._deselect_all()
+        self._panning = True
+        self._pan_start = (event.x, event.y)
+        self._pan_start_offset = (self.pan_x, self.pan_y)
     
     def _on_ctrl_click(self, event):
         """Ctrl+点击事件（多选）"""
-        x = self.canvas.canvasx(event.x)
-        y = self.canvas.canvasy(event.y)
+        x = (self.canvas.canvasx(event.x) - self.pan_x) / self.zoom
+        y = (self.canvas.canvasy(event.y) - self.pan_y) / self.zoom
         
         for node_id, node in self.nodes.items():
             if node.contains_point(x, y):
@@ -474,7 +524,8 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         start_x, start_y = node.get_output_port_pos()
         
         self._temp_line = self.canvas.create_line(
-            start_x, start_y, x, y,
+            start_x * self.zoom + self.pan_x, start_y * self.zoom + self.pan_y,
+            x * self.zoom + self.pan_x, y * self.zoom + self.pan_y,
             fill=self._dark_colors.get('connection_line', '#666666'),
             width=2,
             dash=(5, 3),
@@ -491,7 +542,9 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
             node = self.nodes[self._connect_start_node]
             start_x, start_y = node.get_output_port_pos()
             
-            self.canvas.coords(self._temp_line, start_x, start_y, x, y)
+            self.canvas.coords(self._temp_line, 
+                start_x * self.zoom + self.pan_x, start_y * self.zoom + self.pan_y,
+                x * self.zoom + self.pan_x, y * self.zoom + self.pan_y)
     
     def _finish_connecting(self, target_node_id: str):
         """完成连线"""
@@ -518,8 +571,8 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
     
     def _on_drag(self, event):
         """拖拽事件"""
-        x = self.canvas.canvasx(event.x)
-        y = self.canvas.canvasy(event.y)
+        x = (self.canvas.canvasx(event.x) - self.pan_x) / self.zoom
+        y = (self.canvas.canvasy(event.y) - self.pan_y) / self.zoom
         
         if self._connecting:
             self._update_connecting_line(x, y)
@@ -536,11 +589,20 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
             node = self.nodes[self._drag_node]
             node.move_to(x - self._drag_start[0], y - self._drag_start[1])
             self._redraw_connections()
+            return
+        
+        if self._panning:
+            dx = event.x - self._pan_start[0]
+            dy = event.y - self._pan_start[1]
+            self.pan_x = self._pan_start_offset[0] + dx
+            self.pan_y = self._pan_start_offset[1] + dy
+            self._redraw_all()
+            self._draw_grid()
     
     def _on_release(self, event):
         """释放事件"""
-        x = self.canvas.canvasx(event.x)
-        y = self.canvas.canvasy(event.y)
+        x = (self.canvas.canvasx(event.x) - self.pan_x) / self.zoom
+        y = (self.canvas.canvasy(event.y) - self.pan_y) / self.zoom
         
         if self._connecting:
             for node_id, node in self.nodes.items():
@@ -561,6 +623,7 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         
         self._dragging = False
         self._drag_node = None
+        self._panning = False
     
     def _on_scroll(self, event):
         """滚轮事件"""
@@ -569,13 +632,13 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         else:
             self.zoom /= 1.1
         self.zoom = max(0.25, min(4.0, self.zoom))
-        scale_factor = 1.1 if event.delta > 0 else 0.9
-        self.canvas.scale("all", event.x, event.y, scale_factor, scale_factor)
+        self._redraw_all()
+        self._draw_grid()
     
     def _on_right_click(self, event):
         """右键菜单"""
-        x = self.canvas.canvasx(event.x)
-        y = self.canvas.canvasy(event.y)
+        x = (self.canvas.canvasx(event.x) - self.pan_x) / self.zoom
+        y = (self.canvas.canvasy(event.y) - self.pan_y) / self.zoom
         
         menu = tk.Menu(self, tearoff=0, bg=self._dark_colors['bg_secondary'], 
                        fg=self._dark_colors['text_primary'],
@@ -592,8 +655,8 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
     
     def _on_double_click(self, event):
         """双击事件"""
-        x = self.canvas.canvasx(event.x)
-        y = self.canvas.canvasy(event.y)
+        x = (self.canvas.canvasx(event.x) - self.pan_x) / self.zoom
+        y = (self.canvas.canvasy(event.y) - self.pan_y) / self.zoom
         
         for node_id, node in self.nodes.items():
             if node.contains_point(x, y):
@@ -613,6 +676,8 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
     
     def _deselect_all(self):
         """取消所有选中"""
+        if self.on_node_deselect and self.selected_node:
+            self.on_node_deselect()
         self.selected_node = None
         self.selected_nodes = []
         for node in self.nodes.values():
@@ -625,8 +690,8 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
             coords = self.canvas.coords(line_id)
             if len(coords) >= 4:
                 for i in range(0, len(coords) - 2, 2):
-                    x1, y1 = coords[i], coords[i + 1]
-                    x2, y2 = coords[i + 2], coords[i + 3]
+                    x1, y1 = (coords[i] - self.pan_x) / self.zoom, (coords[i + 1] - self.pan_y) / self.zoom
+                    x2, y2 = (coords[i + 2] - self.pan_x) / self.zoom, (coords[i + 3] - self.pan_y) / self.zoom
                     
                     dist = self._point_to_line_distance(x, y, x1, y1, x2, y2)
                     if dist < 10:
@@ -685,9 +750,9 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         """复制节点"""
         pass
     
-    def add_node(self, node_id: str, node_type: str, x: float, y: float) -> NodeItem:
+    def add_node(self, node_id: str, node_type: str, x: float, y: float, name: str = "", config: dict = None, enabled: bool = True) -> NodeItem:
         """添加节点"""
-        node = NodeItem(self.canvas, node_id, node_type, x, y)
+        node = NodeItem(self.canvas, node_id, node_type, x, y, name, config, enabled, self.zoom, self.pan_x, self.pan_y)
         self.nodes[node_id] = node
         return node
     
@@ -721,15 +786,30 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
     def _redraw_connections(self):
         """重绘连接线"""
         self.canvas.delete("connection")
+        self.canvas.delete("connection_order")
         self.connection_items.clear()
         
+        parent_child_order: Dict[str, int] = {}
+        
         for parent_id, child_id in self.connections:
+            if parent_id not in parent_child_order:
+                parent_child_order[parent_id] = 0
+            else:
+                parent_child_order[parent_id] += 1
+            
+            order_num = parent_child_order[parent_id] + 1
+            
             if parent_id in self.nodes and child_id in self.nodes:
                 parent = self.nodes[parent_id]
                 child = self.nodes[child_id]
                 
                 start_x, start_y = parent.get_output_port_pos()
                 end_x, end_y = child.get_input_port_pos()
+                
+                start_x = start_x * self.zoom + self.pan_x
+                start_y = start_y * self.zoom + self.pan_y
+                end_x = end_x * self.zoom + self.pan_x
+                end_y = end_y * self.zoom + self.pan_y
                 
                 mid_y = (start_y + end_y) / 2
                 
@@ -751,9 +831,32 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
                 )
                 
                 self.connection_items[(parent_id, child_id)] = line_id
+                
+                if order_num > 1 or len([c for c in self.connections if c[0] == parent_id]) > 1:
+                    order_text = self.canvas.create_text(
+                        end_x + 15,
+                        end_y - 15,
+                        text=str(order_num),
+                        fill=self._dark_colors['text_secondary'],
+                        font=("Arial", max(8, int(10 * self.zoom)), "bold"),
+                        tags="connection_order"
+                    )
         
+        self.canvas.tag_lower("connection_order")
         self.canvas.tag_lower("connection")
         self.canvas.tag_lower("grid")
+    
+    def _scale(self, value: float) -> float:
+        """应用缩放"""
+        return value * self.zoom
+    
+    def _redraw_all(self):
+        """重绘所有元素"""
+        for node in self.nodes.values():
+            node.set_zoom(self.zoom)
+            node.set_pan(self.pan_x, self.pan_y)
+            node.redraw()
+        self._redraw_connections()
     
     def clear_canvas(self):
         """清空画布"""
@@ -764,6 +867,17 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         self.selected_node = None
         self.selected_nodes = []
         self.selected_connection = None
+        self._dragging = False
+        self._drag_node = None
+        self._drag_start = (0, 0)
+        self._drag_start_pos = (0, 0)
+        self._panning = False
+        self._pan_start = (0, 0)
+        self._pan_start_offset = (0, 0)
+        self._connecting = False
+        self._connect_start_node = None
+        self._connect_start_pos = None
+        self._connect_line = None
         self._draw_grid()
     
     def set_node_status(self, node_id: str, status: NodeExecutionStatus):
@@ -783,23 +897,49 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         nodes_data = tree_data.get("nodes", {})
         root_id = tree_data.get("root_node")
         
-        if not root_id or not nodes_data:
+        if not nodes_data:
             return
         
-        positions = self._calculate_positions(nodes_data, root_id)
+        canvas_state = tree_data.get("canvas", {})
+        if canvas_state:
+            viewport = canvas_state.get("viewport", {})
+            if viewport:
+                self.zoom = viewport.get("zoom", 1.0)
+                self.pan_x = viewport.get("offset_x", 0)
+                self.pan_y = viewport.get("offset_y", 0)
         
         for node_id, node_data in nodes_data.items():
-            if node_id in positions:
-                x, y = positions[node_id]
-                self.add_node(node_id, node_data.get("type", "Node"), x, y)
+            node_type = node_data.get("type", "Node")
+            config = node_data.get("config", {})
+            name = node_data.get("name", "")
+            enabled = node_data.get("enabled", True)
+            
+            if "position" in node_data:
+                x = node_data["position"].get("x", 200)
+                y = node_data["position"].get("y", 100)
+            else:
+                x, y = 200, 100
+            
+            self.add_node(node_id, node_type, x, y, name, config, enabled)
         
         for node_id, node_data in nodes_data.items():
             children = node_data.get("children", [])
             for child_id in children:
                 self.add_connection(node_id, child_id)
-            
+        
             if "child" in node_data:
                 self.add_connection(node_id, node_data["child"])
+        
+        if root_id and root_id in self.nodes:
+            self.root_node = root_id
+        
+        self._redraw_all()
+        
+        editor_state = tree_data.get("editor_state", {})
+        if editor_state:
+            selected_node = editor_state.get("selected_node")
+            if selected_node and selected_node in self.nodes:
+                self._select_node(selected_node)
     
     def _calculate_positions(self, nodes_data: Dict, root_id: str) -> Dict[str, tuple]:
         """计算节点位置"""
@@ -840,8 +980,13 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
             nodes_data[node_id] = {
                 "id": node_id,
                 "type": node.node_type,
-                "name": "",
-                "config": {}
+                "name": getattr(node, 'name', ''),
+                "enabled": getattr(node, 'enabled', True),
+                "config": getattr(node, 'config', {}),
+                "position": {
+                    "x": node.x,
+                    "y": node.y
+                }
             }
         
         for parent_id, child_id in self.connections:
@@ -858,7 +1003,18 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
                 break
         
         return {
-            "name": "未命名",
+            "version": "2.0",
+            "format_type": "behavior_tree_editor",
+            "canvas": {
+                "name": "未命名",
+                "description": "",
+                "viewport": {
+                    "zoom": self.zoom,
+                    "offset_x": self.pan_x,
+                    "offset_y": self.pan_y
+                }
+            },
             "root_node": root_id,
-            "nodes": nodes_data
+            "nodes": nodes_data,
+            "connections": [{"parent_id": p, "child_id": c} for p, c in self.connections]
         }

@@ -25,6 +25,7 @@ class ExecutionContext:
     - 输入控制器
     - 日志管理器
     - 执行状态控制
+    - 节点状态回调
     """
     
     def __init__(self, app):
@@ -45,6 +46,8 @@ class ExecutionContext:
         self._is_paused = False
         self._start_time: Optional[float] = None
         self._tick_count = 0
+        
+        self._on_node_status: Optional[callable] = None
     
     @property
     def is_running(self) -> bool:
@@ -67,6 +70,18 @@ class ExecutionContext:
     def tick_count(self) -> int:
         """已执行 tick 次数"""
         return self._tick_count
+    
+    def set_node_status_callback(self, callback: callable) -> None:
+        """设置节点状态回调"""
+        self._on_node_status = callback
+    
+    def notify_node_status(self, node_id: str, status: str) -> None:
+        """通知节点状态变化"""
+        if self._on_node_status:
+            try:
+                self._on_node_status(node_id, status)
+            except Exception:
+                pass
     
     def start(self) -> None:
         """开始执行"""
@@ -106,7 +121,8 @@ class ExecutionContext:
     
     def check_running(self) -> bool:
         """检查是否仍在运行"""
-        self.wait_if_paused()
+        if self._is_paused:
+            self.wait_if_paused()
         return self._is_running
     
     def log(self, message: str, level: str = "info") -> None:
@@ -154,7 +170,7 @@ class ExecutionContext:
         
         try:
             if action == "press":
-                self.input_controller.press(key)
+                self.input_controller.press_key(key, delay=duration/1000.0 if duration > 0 else 0)
             elif action == "down":
                 self.input_controller.key_down(key)
             elif action == "up":
@@ -180,8 +196,7 @@ class ExecutionContext:
         
         try:
             if position:
-                self.input_controller.move_to(position[0], position[1])
-            self.input_controller.click(button=button)
+                self.input_controller.click(position[0], position[1])
             return True
         except Exception as e:
             self.log(f"鼠标点击失败: {e}", "error")

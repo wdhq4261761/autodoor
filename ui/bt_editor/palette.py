@@ -20,16 +20,6 @@ NODE_CATEGORIES = {
             ("ParallelNode", "并行", "同时执行所有子节点"),
         ]
     },
-    "装饰节点": {
-        "icon": "◈",
-        "color": Theme.NODE_COLORS['decorator'],
-        "nodes": [
-            ("InverterNode", "取反", "反转子节点的结果"),
-            ("RepeaterNode", "重复", "重复执行子节点"),
-            ("RetryNode", "重试", "失败时重试子节点"),
-            ("TimeoutNode", "超时", "限制执行时间"),
-        ]
-    },
     "条件节点": {
         "icon": "◇",
         "color": Theme.NODE_COLORS['condition'],

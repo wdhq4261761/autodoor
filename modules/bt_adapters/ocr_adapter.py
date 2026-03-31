@@ -28,28 +28,13 @@ class OCRConditionNode(ConditionNode):
         self.save_position = self.config.get("save_position", True)
         self.position_key = self.config.get("position_key", "last_ocr_position")
     
-    def tick(self, context: "ExecutionContext") -> NodeStatus:
-        """
-        执行 OCR 条件检测
-        
-        Args:
-            context: 执行上下文
-            
-        Returns:
-            检测结果状态
-        """
-        if not self.enabled:
-            return NodeStatus.SUCCESS
-        
-        if not context.check_running():
-            return NodeStatus.ABORTED
-        
+    def _execute_condition(self, context: "ExecutionContext") -> NodeStatus:
+        """执行 OCR 条件检测"""
         try:
             screenshot = context.get_screenshot(self.region)
             
             if screenshot is None:
                 context.log(f"OCR节点 {self.name}: 截图失败")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
             
             from utils.recognition import OCRRecognizer
@@ -65,16 +50,13 @@ class OCRConditionNode(ConditionNode):
                 if self.save_position and position:
                     context.blackboard.set(self.position_key, position)
                 context.log(f"OCR节点 {self.name}: 检测到关键词")
-                self._status = NodeStatus.SUCCESS
                 return NodeStatus.SUCCESS
             else:
                 context.log(f"OCR节点 {self.name}: 未检测到关键词")
-                self._status = NodeStatus.FAILURE
                 return NodeStatus.FAILURE
                 
         except Exception as e:
             context.log(f"OCR节点 {self.name}: 执行出错 - {e}")
-            self._status = NodeStatus.FAILURE
             return NodeStatus.FAILURE
     
     def to_dict(self) -> Dict[str, Any]:
