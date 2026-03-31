@@ -31,7 +31,8 @@ class AutoSaveManager:
         self,
         get_data_func: Callable[[], Dict[str, Any]],
         on_save_callback: Optional[Callable[[bool], None]] = None,
-        autosave_dir: str = "data/autosave"
+        autosave_dir: str = "data/autosave",
+        get_file_path_func: Optional[Callable[[], Optional[str]]] = None
     ):
         """
         初始化自动保存管理器
@@ -40,10 +41,12 @@ class AutoSaveManager:
             get_data_func: 获取当前画板数据的函数
             on_save_callback: 保存完成后的回调函数，参数为是否成功
             autosave_dir: 自动保存目录
+            get_file_path_func: 获取当前文件路径的函数，如果有则保存到该路径
         """
         self._get_data_func = get_data_func
         self._on_save_callback = on_save_callback
         self._autosave_dir = Path(autosave_dir)
+        self._get_file_path_func = get_file_path_func
         self._save_timer: Optional[threading.Timer] = None
         self._is_running = False
         self._last_save_time: float = 0
@@ -128,7 +131,15 @@ class AutoSaveManager:
                     return False
                 
                 self._add_metadata(data)
-                self._rotate_and_save(data)
+                
+                if self._get_file_path_func:
+                    file_path = self._get_file_path_func()
+                    if file_path:
+                        self._save_to_file(data, file_path)
+                    else:
+                        self._rotate_and_save(data)
+                else:
+                    self._rotate_and_save(data)
                 
                 self._last_save_time = time.time()
                 
@@ -141,6 +152,14 @@ class AutoSaveManager:
                 if self._on_save_callback:
                     self._on_save_callback(False)
                 return False
+    
+    def _save_to_file(self, data: Dict[str, Any], file_path: str) -> None:
+        """保存到指定文件"""
+        path = Path(file_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
                 
     def _add_metadata(self, data: Dict[str, Any]) -> None:
         """添加元数据"""

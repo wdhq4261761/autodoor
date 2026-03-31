@@ -5,7 +5,7 @@
 """
 
 import customtkinter as ctk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from ui.theme import Theme
@@ -18,6 +18,7 @@ from ui.bt_editor.undo_redo import (
     MoveNodeCommand, AddConnectionCommand
 )
 from modules.persistence import AutoSaveManager, CrashRecoveryHandler, FileRecoveryHandler
+from ui.script_tab import askyesnocancel_centered
 from modules.behavior_tree.serializer import BehaviorTreeSerializer
 
 if TYPE_CHECKING:
@@ -50,7 +51,8 @@ class BehaviorTreeEditor(ctk.CTkFrame):
         """初始化持久化功能"""
         self.auto_save_manager = AutoSaveManager(
             get_data_func=self.get_tree_data,
-            on_save_callback=self._on_autosave_complete
+            on_save_callback=self._on_autosave_complete,
+            get_file_path_func=lambda: self.file_path
         )
         
         self.crash_recovery_handler = CrashRecoveryHandler(
@@ -207,8 +209,13 @@ class BehaviorTreeEditor(ctk.CTkFrame):
     def _on_new(self):
         """新建"""
         if self._is_modified:
-            if not messagebox.askyesno("确认", "当前文件未保存，是否继续新建？"):
+            result = askyesnocancel_centered(self.winfo_toplevel(), "保存确认", "当前行为树已修改，是否保存？")
+            if result is None:
                 return
+            elif result:
+                self._on_save()
+                if self._is_modified:
+                    return
         
         self.tree_data = {"name": "未命名", "nodes": {}}
         self.file_path = None
@@ -217,10 +224,20 @@ class BehaviorTreeEditor(ctk.CTkFrame):
         self._is_modified = False
         self.command_manager.clear()
         self.toolbar.set_status("新建")
+        self.toolbar.set_file_path(None)
         self._update_undo_redo_buttons()
     
     def _on_open(self):
         """打开文件"""
+        if self._is_modified:
+            result = askyesnocancel_centered(self.winfo_toplevel(), "保存确认", "当前行为树已修改，是否保存？")
+            if result is None:
+                return
+            elif result:
+                self._on_save()
+                if self._is_modified:
+                    return
+        
         file_path = filedialog.askopenfilename(
             title="打开行为树",
             filetypes=[("JSON文件", "*.json"), ("所有文件", "*.*")]
@@ -251,6 +268,7 @@ class BehaviorTreeEditor(ctk.CTkFrame):
             self._node_counter = max_counter
             
             self.toolbar.set_status(f"已加载: {self.tree_data.get('name', '未命名')}")
+            self.toolbar.set_file_path(file_path)
             self._update_undo_redo_buttons()
         else:
             messagebox.showerror("加载失败", "无法加载行为树文件")
@@ -283,13 +301,16 @@ class BehaviorTreeEditor(ctk.CTkFrame):
             self.file_path = file_path
             self._is_modified = False
             self.toolbar.set_status("已保存")
+            self.toolbar.set_file_path(file_path)
         else:
+            from tkinter import messagebox
             messagebox.showerror("保存失败", "无法保存行为树")
     
     def _on_clear_canvas(self):
         """清空画布"""
         if self.canvas.nodes:
-            if not messagebox.askyesno("确认清空", "确定要清空画布吗？\n此操作不可撤销。"):
+            from ui.script_tab import askyesno_centered
+            if not askyesno_centered(self.winfo_toplevel(), "确认清空", "确定要清空画布吗？\n此操作不可撤销。"):
                 return
         self.canvas.clear_canvas()
         self._node_counter = 0

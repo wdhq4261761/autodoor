@@ -188,6 +188,7 @@ class AutoDoorOCR:
         self.color_var = tk.StringVar(value="未选择颜色")
         self.tolerance_var = tk.StringVar(value="10")
         self.interval_var = tk.StringVar(value="5")
+        self.script_file_path = None
 
     def _create_layout(self):
         self._create_header()

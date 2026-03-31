@@ -152,7 +152,9 @@ class ConfigManager:
             # 首页功能状态勾选框配置
             'home_checkboxes': self._get_home_checkboxes_config(),
             # 脚本和颜色识别配置
-            'script': self._get_script_config()
+            'script': self._get_script_config(),
+            # 行为树配置
+            'behavior_tree': self._get_behavior_tree_config()
         }
         return config
     
@@ -570,6 +572,25 @@ class ConfigManager:
                 self.app.combo_after_delay.set(str(int(script_config['combo_after_delay'])))
             except (ValueError, TypeError):
                 self.app.combo_after_delay.set('300')
+        
+        if 'script_file_path' in script_config and script_config['script_file_path']:
+            script_file_path = script_config['script_file_path']
+            self.app.script_file_path = script_file_path
+            if hasattr(self.app, 'script_file_path_var'):
+                import os
+                self.app.script_file_path_var.set(script_file_path)
+                if hasattr(self.app, 'script_file_path_label'):
+                    self.app.script_file_path_label.configure(text=os.path.basename(script_file_path))
+    
+    def load_behavior_tree_config(self, config):
+        """加载行为树配置"""
+        bt_config = self.get_config_value(config, 'behavior_tree', {})
+        
+        if 'file_path' in bt_config and bt_config['file_path']:
+            file_path = bt_config['file_path']
+            if hasattr(self.app, 'behavior_tree') and hasattr(self.app.behavior_tree, 'editor'):
+                self.app.behavior_tree.editor.file_path = file_path
+                self.app.behavior_tree.editor.toolbar.set_file_path(file_path)
     
     def defer_save_config(self):
         """
@@ -843,7 +864,17 @@ class ConfigManager:
             'color_recognition_enabled': color_recognition_enabled,
             'delay_var': delay_var,
             'combo_key_delay': combo_key_delay,
-            'combo_after_delay': combo_after_delay
+            'combo_after_delay': combo_after_delay,
+            'script_file_path': getattr(self.app, 'script_file_path', None)
+        }
+    
+    def _get_behavior_tree_config(self):
+        """获取行为树配置"""
+        file_path = None
+        if hasattr(self.app, 'behavior_tree') and hasattr(self.app.behavior_tree, 'editor'):
+            file_path = self.app.behavior_tree.editor.file_path
+        return {
+            'file_path': file_path
         }
     
     def load_config(self):
@@ -896,6 +927,7 @@ class ConfigManager:
             self.load_shortcuts_config(config)
             self.load_home_checkboxes_config(config)
             self.load_script_config(config)
+            self.load_behavior_tree_config(config)
 
             self.app.logging_manager.log_message("配置加载成功")
             return True, config_version
@@ -1038,6 +1070,7 @@ class ConfigManager:
             def on_script_change(event):
                 if self.app.script_text.edit_modified():
                     immediate_save()
+                    self._auto_save_script_file()
                     self.app.script_text.edit_modified(False)
             self.app.script_text.bind("<<Modified>>", on_script_change)
             self.app.script_text.edit_modified(False)
@@ -1067,6 +1100,16 @@ class ConfigManager:
         
         if hasattr(self.app, 'combo_after_delay'):
             self.app.combo_after_delay.trace_add("write", immediate_save)
+
+    def _auto_save_script_file(self):
+        """自动保存脚本到当前文件路径"""
+        if hasattr(self.app, 'script_file_path') and self.app.script_file_path:
+            if hasattr(self.app, 'script_text'):
+                try:
+                    with open(self.app.script_file_path, 'w', encoding='utf-8') as f:
+                        f.write(self.app.script_text.get(1.0, 'end'))
+                except Exception:
+                    pass
 
     def clear_ocr_groups(self):
         """清空所有OCR组"""

@@ -157,6 +157,14 @@ class EditorToolbar(ctk.CTkFrame):
         status_frame = ctk.CTkFrame(parent, fg_color="transparent")
         status_frame.pack(side="left")
         
+        self.file_path_label = ctk.CTkLabel(
+            status_frame,
+            text="未保存",
+            font=Theme.get_font('sm'),
+            text_color=self._dark_colors['text_muted']
+        )
+        self.file_path_label.pack(side="left", padx=(0, Theme.DIMENSIONS['spacing_md']))
+        
         self.status_indicator = ctk.CTkFrame(
             status_frame,
             width=8,
@@ -231,3 +239,10 @@ class EditorToolbar(ctk.CTkFrame):
         if color:
             self.status_indicator.configure(fg_color=color)
             self.status_label.configure(text_color=color)
+    
+    def set_file_path(self, file_path: Optional[str]):
+        """设置文件路径显示"""
+        if file_path:
+            self.file_path_label.configure(text=file_path)
+        else:
+            self.file_path_label.configure(text="未保存")

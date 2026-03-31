@@ -102,6 +102,7 @@ Delay 68
 Keydown "up", 1
 Delay 85
 Keyup "up", 1
-Delay 114
-Keyup "right", 1
+
+
+
 

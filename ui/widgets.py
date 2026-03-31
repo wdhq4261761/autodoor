@@ -142,6 +142,7 @@ class AnimatedButton(ctk.CTkButton):
         
         self.bind('<ButtonPress-1>', self._on_press)
         self.bind('<ButtonRelease-1>', self._on_release)
+        self.bind('<Leave>', self._on_leave)
     
     def _darken_color(self, hex_color, factor):
         try:
@@ -161,6 +162,10 @@ class AnimatedButton(ctk.CTkButton):
             self.configure(fg_color=self._press_color)
     
     def _on_release(self, event):
+        if self._original_fg not in ['transparent']:
+            self.configure(fg_color=self._original_fg)
+    
+    def _on_leave(self, event=None):
         if self._original_fg not in ['transparent']:
             self.configure(fg_color=self._original_fg)
 

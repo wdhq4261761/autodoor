@@ -5,6 +5,130 @@ from tkinter import messagebox, filedialog
 from ui.theme import Theme
 from ui.widgets import CardFrame, AnimatedButton, NumericEntry, create_divider
 
+def center_window_on_parent(window, parent):
+    """将窗口居中显示在父窗口上"""
+    window.update_idletasks()
+    parent_x = parent.winfo_rootx()
+    parent_y = parent.winfo_rooty()
+    parent_width = parent.winfo_width()
+    parent_height = parent.winfo_height()
+    window_width = window.winfo_width()
+    window_height = window.winfo_height()
+    x = parent_x + (parent_width - window_width) // 2
+    y = parent_y + (parent_height - window_height) // 2
+    window.geometry(f"+{x}+{y}")
+
+def askyesnocancel_centered(parent, title, message):
+    """显示居中的是/否/取消对话框"""
+    dialog = tk.Toplevel(parent)
+    dialog.title(title)
+    dialog.transient(parent)
+    dialog.grab_set()
+    dialog.resizable(False, False)
+    
+    result = [None]
+    
+    frame = ctk.CTkFrame(dialog, fg_color='transparent')
+    frame.pack(fill='both', expand=True, padx=20, pady=15)
+    
+    label = ctk.CTkLabel(frame, text=message, font=Theme.get_font('base'), wraplength=300)
+    label.pack(pady=(0, 15))
+    
+    btn_frame = ctk.CTkFrame(frame, fg_color='transparent')
+    btn_frame.pack(fill='x')
+    
+    def on_yes():
+        result[0] = True
+        dialog.destroy()
+    
+    def on_no():
+        result[0] = False
+        dialog.destroy()
+    
+    def on_cancel():
+        result[0] = None
+        dialog.destroy()
+    
+    yes_btn = ctk.CTkButton(btn_frame, text='是', width=80, command=on_yes,
+                            fg_color=Theme.COLORS['success'], hover_color='#16A34A')
+    yes_btn.pack(side='left', padx=5, expand=True)
+    
+    no_btn = ctk.CTkButton(btn_frame, text='否', width=80, command=on_no,
+                           fg_color=Theme.COLORS['error'], hover_color='#DC2626')
+    no_btn.pack(side='left', padx=5, expand=True)
+    
+    cancel_btn = ctk.CTkButton(btn_frame, text='取消', width=80, command=on_cancel,
+                               fg_color='#6B7280', hover_color='#4B5563',
+                               text_color='white')
+    cancel_btn.pack(side='left', padx=5, expand=True)
+    
+    dialog.protocol("WM_DELETE_WINDOW", on_cancel)
+    
+    dialog.update_idletasks()
+    dialog_width = dialog.winfo_width()
+    dialog_height = dialog.winfo_height()
+    parent_x = parent.winfo_rootx()
+    parent_y = parent.winfo_rooty()
+    parent_width = parent.winfo_width()
+    parent_height = parent.winfo_height()
+    x = parent_x + (parent_width - dialog_width) // 2
+    y = parent_y + (parent_height - dialog_height) // 2
+    dialog.geometry(f"+{x}+{y}")
+    
+    dialog.wait_window()
+    return result[0]
+
+def askyesno_centered(parent, title, message):
+    """显示居中的是/否对话框"""
+    dialog = tk.Toplevel(parent)
+    dialog.title(title)
+    dialog.transient(parent)
+    dialog.grab_set()
+    dialog.resizable(False, False)
+    
+    result = [False]
+    
+    frame = ctk.CTkFrame(dialog, fg_color='transparent')
+    frame.pack(fill='both', expand=True, padx=20, pady=15)
+    
+    label = ctk.CTkLabel(frame, text=message, font=Theme.get_font('base'), wraplength=300)
+    label.pack(pady=(0, 15))
+    
+    btn_frame = ctk.CTkFrame(frame, fg_color='transparent')
+    btn_frame.pack(fill='x')
+    
+    def on_yes():
+        result[0] = True
+        dialog.destroy()
+    
+    def on_no():
+        result[0] = False
+        dialog.destroy()
+    
+    yes_btn = ctk.CTkButton(btn_frame, text='是', width=80, command=on_yes,
+                            fg_color=Theme.COLORS['success'], hover_color='#16A34A')
+    yes_btn.pack(side='left', padx=10, expand=True)
+    
+    no_btn = ctk.CTkButton(btn_frame, text='否', width=80, command=on_no,
+                           fg_color=Theme.COLORS['error'], hover_color='#DC2626')
+    no_btn.pack(side='left', padx=10, expand=True)
+    
+    dialog.protocol("WM_DELETE_WINDOW", on_no)
+    
+    dialog.update_idletasks()
+    dialog_width = dialog.winfo_width()
+    dialog_height = dialog.winfo_height()
+    parent_x = parent.winfo_rootx()
+    parent_y = parent.winfo_rooty()
+    parent_width = parent.winfo_width()
+    parent_height = parent.winfo_height()
+    x = parent_x + (parent_width - dialog_width) // 2
+    y = parent_y + (parent_height - dialog_height) // 2
+    dialog.geometry(f"+{x}+{y}")
+    
+    dialog.wait_window()
+    return result[0]
+
 def create_script_tab(app):
     page = ctk.CTkFrame(app.content_area, fg_color='transparent')
     app.pages['script'] = page
@@ -162,6 +286,16 @@ def create_script_tab(app):
     
     create_divider(control_card)
     
+    file_path_row = ctk.CTkFrame(control_card, fg_color='transparent')
+    file_path_row.pack(fill='x', padx=10, pady=(4, 4))
+    
+    ctk.CTkLabel(file_path_row, text='当前文件:', font=Theme.get_font('xs')).pack(side='left')
+    app.script_file_path_var = tk.StringVar(value="未保存")
+    app.script_file_path_label = ctk.CTkLabel(file_path_row, textvariable=app.script_file_path_var, 
+                                               font=Theme.get_font('xs'), text_color=Theme.COLORS['text_muted'],
+                                               anchor='w')
+    app.script_file_path_label.pack(side='left', padx=(4, 0), fill='x', expand=True)
+    
     control_row1 = ctk.CTkFrame(control_card, fg_color='transparent')
     control_row1.pack(fill='x', padx=10, pady=(4, 8))
     
@@ -181,22 +315,22 @@ def create_script_tab(app):
     control_row2 = ctk.CTkFrame(control_card, fg_color='transparent')
     control_row2.pack(fill='x', padx=10, pady=(0, 8))
     
-    clear_btn = AnimatedButton(control_row2, text='清空', font=Theme.get_font('xs'), height=24,
-                               fg_color='transparent', text_color=Theme.COLORS['primary'],
-                               border_width=1, corner_radius=4,
-                               hover_color=Theme.COLORS['info_light'],
-                               command=lambda: clear_script(app))
-    clear_btn.pack(side='left', fill='x', expand=True, padx=(0, 4))
+    new_btn = AnimatedButton(control_row2, text='新建', font=Theme.get_font('xs'),
+                             height=24, corner_radius=4, 
+                             fg_color='transparent', text_color=Theme.COLORS['primary'],
+                             border_width=1, hover_color=Theme.COLORS['info_light'],
+                             command=lambda: new_script(app))
+    new_btn.pack(side='left', fill='x', expand=True, padx=(0, 4))
     
-    import_btn = AnimatedButton(control_row2, text='导入', font=Theme.get_font('xs'), height=24, corner_radius=4,
-                                fg_color=Theme.COLORS['primary'], hover_color=Theme.COLORS['primary_hover'],
-                                command=lambda: load_script(app))
-    import_btn.pack(side='left', fill='x', expand=True, padx=(0, 4))
+    open_btn = AnimatedButton(control_row2, text='打开', font=Theme.get_font('xs'), height=24, corner_radius=4,
+                              fg_color=Theme.COLORS['primary'], hover_color=Theme.COLORS['primary_hover'],
+                              command=lambda: load_script(app))
+    open_btn.pack(side='left', fill='x', expand=True, padx=(0, 4))
     
-    export_btn = AnimatedButton(control_row2, text='导出', font=Theme.get_font('xs'), height=24, corner_radius=4,
-                                fg_color=Theme.COLORS['success'], hover_color='#16A34A',
-                                command=lambda: save_script(app))
-    export_btn.pack(side='left', fill='x', expand=True)
+    save_btn = AnimatedButton(control_row2, text='保存', font=Theme.get_font('xs'), height=24, corner_radius=4,
+                              fg_color=Theme.COLORS['success'], hover_color='#16A34A',
+                              command=lambda: save_script(app))
+    save_btn.pack(side='left', fill='x', expand=True)
     
     right_frame = ctk.CTkFrame(main_container, width=400)
     right_frame.pack(side='left', fill='both', expand=True)
@@ -208,8 +342,29 @@ def create_script_tab(app):
     editor_tab = app.script_tabview.add('脚本编辑')
     color_tab = app.script_tabview.add('颜色识别')
     
-    app.script_text = ctk.CTkTextbox(editor_tab, font=('Consolas', 10))
-    app.script_text.pack(fill='both', expand=True, padx=4, pady=4)
+    editor_content = ctk.CTkFrame(editor_tab, fg_color='transparent')
+    editor_content.pack(fill='both', expand=True, padx=4, pady=4)
+    
+    app.script_text = ctk.CTkTextbox(editor_content, font=('Consolas', 10))
+    app.script_text.pack(fill='both', expand=True)
+    
+    clear_btn = AnimatedButton(editor_content, text='清空', font=Theme.get_font('xs'), width=80, height=22,
+                               fg_color='#ffffff', text_color=Theme.COLORS['text_secondary'],
+                               border_width=1, border_color=Theme.COLORS['border'],
+                               corner_radius=4,
+                               hover_color=Theme.COLORS['info_light'],
+                               command=lambda: clear_script(app))
+    clear_btn.pack(side='right', pady=(4, 0))
+    
+    app.script_modified = False
+    app.script_original_content = ""
+    
+    def on_script_modified(event):
+        if app.script_text.edit_modified():
+            app.script_modified = True
+            app.script_text.edit_modified(False)
+    
+    app.script_text.bind("<<Modified>>", on_script_modified)
     
     create_color_recognition_tab(app, color_tab)
 
@@ -395,28 +550,85 @@ def insert_combo_command(app):
         app.script_text.insert(tk.INSERT, combo_command)
         app.script_text.see(tk.END)
 
+def check_script_modified(app):
+    """检查脚本是否已修改，返回True表示可以继续操作"""
+    if hasattr(app, 'script_modified') and app.script_modified:
+        result = askyesnocancel_centered(app.root, "保存确认", "当前脚本已修改，是否保存？")
+        if result is None:
+            return False
+        elif result:
+            save_script(app)
+    return True
+
+def new_script(app):
+    """新建脚本"""
+    if not check_script_modified(app):
+        return
+    
+    app.script_text.delete(1.0, tk.END)
+    app.script_file_path_var.set("未保存")
+    app.script_file_path = None
+    app.script_modified = False
+    app.script_original_content = ""
+
 def clear_script(app):
-    if messagebox.askyesno("确认", "确定要清空当前脚本吗？"):
+    if askyesno_centered(app.root, "确认", "确定要清空当前脚本吗？"):
         app.script_text.delete(1.0, tk.END)
+        app.script_file_path_var.set("未保存")
+        app.script_modified = False
 
 def save_script(app):
+    current_path = app.script_file_path_var.get()
+    if current_path and current_path != "未保存":
+        file_path = current_path
+    else:
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")],
+            title="保存脚本"
+        )
+    
+    if file_path:
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(app.script_text.get(1.0, tk.END))
+            app.script_file_path_var.set(file_path)
+            app.script_file_path = file_path
+            import os
+            app.script_file_path_label.configure(text=os.path.basename(file_path))
+            app.script_modified = False
+            app.script_original_content = app.script_text.get(1.0, tk.END)
+            messagebox.showinfo("成功", f"脚本已保存到: {file_path}")
+        except Exception as e:
+            messagebox.showerror("错误", f"保存脚本失败: {str(e)}")
+
+def save_script_as(app):
     file_path = filedialog.asksaveasfilename(
         defaultextension=".txt",
         filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")],
-        title="保存脚本"
+        title="另存为"
     )
     if file_path:
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(app.script_text.get(1.0, tk.END))
+            app.script_file_path_var.set(file_path)
+            app.script_file_path = file_path
+            import os
+            app.script_file_path_label.configure(text=os.path.basename(file_path))
+            app.script_modified = False
+            app.script_original_content = app.script_text.get(1.0, tk.END)
             messagebox.showinfo("成功", f"脚本已保存到: {file_path}")
         except Exception as e:
             messagebox.showerror("错误", f"保存脚本失败: {str(e)}")
 
 def load_script(app):
+    if not check_script_modified(app):
+        return
+    
     file_path = filedialog.askopenfilename(
         filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")],
-        title="加载脚本"
+        title="打开脚本"
     )
     if file_path:
         try:
@@ -437,6 +649,12 @@ def load_script(app):
             
             app.script_text.delete(1.0, tk.END)
             app.script_text.insert(1.0, content)
+            app.script_file_path_var.set(file_path)
+            app.script_file_path = file_path
+            import os
+            app.script_file_path_label.configure(text=os.path.basename(file_path))
+            app.script_modified = False
+            app.script_original_content = content
             messagebox.showinfo("成功", f"脚本已从: {file_path} 加载")
         except Exception as e:
             messagebox.showerror("错误", f"加载脚本失败: {str(e)}")
