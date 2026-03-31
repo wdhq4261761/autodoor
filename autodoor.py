@@ -424,7 +424,8 @@ class AutoDoorOCR:
             "number": {"threads": "number_threads", "stop_func": "number.stop_recognition", "label": "数字识别"},
             "image": {"threads": "image_threads", "stop_func": "image.stop_detection", "label": "图像检测"},
             "color": {"threads": "color_threads", "stop_func": "color.stop_recognition", "label": "颜色识别"},
-            "background": {"threads": "background_threads", "stop_func": "background.stop_monitoring", "label": "后台监控"}
+            "background": {"threads": "background_threads", "stop_func": "background.stop_monitoring", "label": "后台监控"},
+            "behavior_tree": {"threads": "behavior_tree_threads", "stop_func": "behavior_tree.stop", "label": "行为树"}
         }
         self.module_controller = ModuleController(self)
 

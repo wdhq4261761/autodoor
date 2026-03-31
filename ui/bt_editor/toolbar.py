@@ -22,8 +22,6 @@ class EditorToolbar(ctk.CTkFrame):
         on_new: Optional[Callable] = None,
         on_load: Optional[Callable] = None,
         on_save: Optional[Callable] = None,
-        on_run: Optional[Callable] = None,
-        on_stop: Optional[Callable] = None,
         on_undo: Optional[Callable] = None,
         on_redo: Optional[Callable] = None,
         on_clear: Optional[Callable] = None,
@@ -34,8 +32,6 @@ class EditorToolbar(ctk.CTkFrame):
         self.on_new = on_new
         self.on_load = on_load
         self.on_save = on_save
-        self.on_run = on_run
-        self.on_stop = on_stop
         self.on_undo = on_undo
         self.on_redo = on_redo
         self.on_clear = on_clear
@@ -56,8 +52,6 @@ class EditorToolbar(ctk.CTkFrame):
         self._create_file_buttons(left_section)
         self._create_separator(left_section)
         self._create_edit_buttons(left_section)
-        self._create_separator(left_section)
-        self._create_run_buttons(left_section)
         
         right_section = ctk.CTkFrame(main_container, fg_color="transparent")
         right_section.pack(side="right")
@@ -148,39 +142,6 @@ class EditorToolbar(ctk.CTkFrame):
         )
         self.clear_btn.pack(side="left", padx=Theme.DIMENSIONS['spacing_xs'])
     
-    def _create_run_buttons(self, parent):
-        """创建运行控制按钮"""
-        run_frame = ctk.CTkFrame(parent, fg_color="transparent")
-        run_frame.pack(side="left")
-        
-        btn_config = {
-            'font': Theme.get_font('sm'),
-            'height': Theme.DIMENSIONS['button_height'],
-            'corner_radius': Theme.DIMENSIONS['button_corner_radius'],
-            'width': 70,
-        }
-        
-        self.run_btn = ctk.CTkButton(
-            run_frame,
-            text="运行",
-            fg_color=self._dark_colors['success'],
-            hover_color='#16A34A',
-            command=self._on_run_click,
-            **btn_config
-        )
-        self.run_btn.pack(side="left", padx=Theme.DIMENSIONS['spacing_xs'])
-        
-        self.stop_btn = ctk.CTkButton(
-            run_frame,
-            text="停止",
-            fg_color=self._dark_colors['error'],
-            hover_color='#DC2626',
-            command=self._on_stop_click,
-            state="disabled",
-            **btn_config
-        )
-        self.stop_btn.pack(side="left", padx=Theme.DIMENSIONS['spacing_xs'])
-    
     def _create_separator(self, parent):
         """创建分隔线"""
         sep = ctk.CTkFrame(
@@ -232,18 +193,6 @@ class EditorToolbar(ctk.CTkFrame):
         if self.on_save:
             self.on_save()
     
-    def _on_run_click(self):
-        """运行"""
-        if self.on_run:
-            self.on_run()
-            self.set_running(True)
-    
-    def _on_stop_click(self):
-        """停止"""
-        if self.on_stop:
-            self.on_stop()
-            self.set_running(False)
-    
     def _on_undo_click(self):
         """撤销"""
         if self.on_undo:
@@ -270,13 +219,9 @@ class EditorToolbar(ctk.CTkFrame):
         """设置运行状态"""
         self.is_running = running
         if running:
-            self.run_btn.configure(state="disabled")
-            self.stop_btn.configure(state="normal")
             self.status_indicator.configure(fg_color=self._dark_colors['warning'])
             self.status_label.configure(text="运行中", text_color=self._dark_colors['warning'])
         else:
-            self.run_btn.configure(state="normal")
-            self.stop_btn.configure(state="disabled")
             self.status_indicator.configure(fg_color=self._dark_colors['success'])
             self.status_label.configure(text="就绪", text_color=self._dark_colors['text_secondary'])
     

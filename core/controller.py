@@ -81,6 +81,10 @@ class ModuleController:
             self.app.background_manager.start_all_groups()
             self._update_indicator("background", True)
 
+        if self.app.module_check_vars.get("behavior_tree", tk.BooleanVar(value=False)).get():
+            self.app.behavior_tree.start()
+            self._update_indicator("behavior_tree", True)
+
         self.app.alarm_module.play_start_sound()
         
         self.app.is_running = True
@@ -110,6 +114,10 @@ class ModuleController:
             self.app.background_manager.stop_all_groups()
             self._update_indicator("background", False)
         
+        if hasattr(self.app, 'behavior_tree'):
+            self.app.behavior_tree.stop()
+            self._update_indicator("behavior_tree", False)
+
         if hasattr(self.app, 'color_recognition_manager') and hasattr(self.app.color_recognition_manager, 'color_recognition'):
             cr = self.app.color_recognition_manager.color_recognition
             if cr and hasattr(cr, 'is_running') and cr.is_running:

@@ -38,7 +38,8 @@ def create_home_tab(app):
         "number": tk.BooleanVar(value=False),
         "image": tk.BooleanVar(value=False),
         "script": tk.BooleanVar(value=False),
-        "background": tk.BooleanVar(value=False)
+        "background": tk.BooleanVar(value=False),
+        "behavior_tree": tk.BooleanVar(value=False)
     }
     
     module_names = {
@@ -47,7 +48,8 @@ def create_home_tab(app):
         "number": "数字识别",
         "image": "图像检测",
         "background": "后台监控",
-        "script": "脚本运行"
+        "script": "脚本运行",
+        "behavior_tree": "行为树"
     }
     
     for module, name in module_names.items():

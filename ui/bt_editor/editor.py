@@ -9,7 +9,7 @@ from tkinter import filedialog, messagebox
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from ui.theme import Theme
-from ui.bt_editor.canvas import BehaviorTreeCanvas
+from ui.bt_editor.canvas import BehaviorTreeCanvas, NodeExecutionStatus
 from ui.bt_editor.palette import NodePalette
 from ui.bt_editor.property import PropertyPanel
 from ui.bt_editor.toolbar import EditorToolbar
@@ -37,13 +37,6 @@ class BehaviorTreeEditor(ctk.CTkFrame):
         self._is_modified = False
         
         self.command_manager = CommandManager(max_history=50)
-        
-        from modules.behavior_tree import BehaviorTreeEngine
-        self._engine = BehaviorTreeEngine(
-            self.app, 
-            on_complete=self._on_execution_complete,
-            on_node_status=self._on_node_status
-        )
         
         self._dark_colors = Theme.get_dark_colors()
         self.configure(fg_color=self._dark_colors['bg_primary'], corner_radius=0)
@@ -117,8 +110,6 @@ class BehaviorTreeEditor(ctk.CTkFrame):
             on_new=self._on_new,
             on_load=self._on_load,
             on_save=self._on_save,
-            on_run=self._on_run,
-            on_stop=self._on_stop,
             on_undo=self._on_undo,
             on_redo=self._on_redo,
             on_clear=self._on_clear_canvas
@@ -191,8 +182,6 @@ class BehaviorTreeEditor(ctk.CTkFrame):
             ("<Control-Shift-Z>", self._on_redo),
             ("<Delete>", self._on_delete_selected),
             ("<BackSpace>", self._on_delete_selected),
-            ("<space>", self._on_toggle_run),
-            ("<Escape>", self._on_stop),
             ("<Control-c>", self._on_copy),
             ("<Control-v>", self._on_paste),
             ("<Control-d>", self._on_duplicate),
@@ -296,57 +285,6 @@ class BehaviorTreeEditor(ctk.CTkFrame):
             self.toolbar.set_status("已保存")
         else:
             messagebox.showerror("保存失败", "无法保存行为树")
-    
-    def _on_run(self):
-        """运行"""
-        self.property_panel._force_save_focus()
-        self.property_panel._save_current_values()
-        self._engine.load_tree(self.canvas.get_tree_data())
-        self._engine.start()
-        self.toolbar.set_running(True)
-        if hasattr(self.app, 'is_running'):
-            self.app.is_running = True
-    
-    def _on_stop(self):
-        """停止"""
-        self._engine.stop()
-        self.canvas.reset_all_status()
-        self.toolbar.set_running(False)
-        if hasattr(self.app, 'is_running'):
-            self.app.is_running = False
-    
-    def _on_execution_complete(self):
-        """执行完成回调"""
-        self.toolbar.set_running(False)
-        if hasattr(self.app, 'is_running'):
-            self.app.is_running = False
-    
-    def _on_node_status(self, node_id: str, status: str):
-        """节点状态变化回调（从后台线程调用）"""
-        try:
-            if hasattr(self.app, 'root') and hasattr(self.app.root, 'after'):
-                self.app.root.after(0, lambda: self._update_node_status(node_id, status))
-        except Exception:
-            pass
-    
-    def _update_node_status(self, node_id: str, status: str):
-        """更新节点状态（主线程）"""
-        from ui.bt_editor.canvas import NodeExecutionStatus
-        status_map = {
-            "running": NodeExecutionStatus.RUNNING,
-            "success": NodeExecutionStatus.SUCCESS,
-            "failure": NodeExecutionStatus.FAILURE,
-            "aborted": NodeExecutionStatus.ABORTED,
-        }
-        node_status = status_map.get(status, NodeExecutionStatus.IDLE)
-        self.canvas.set_node_status(node_id, node_status)
-    
-    def _on_toggle_run(self):
-        """切换运行状态"""
-        if self.toolbar.is_running:
-            self._on_stop()
-        else:
-            self._on_run()
     
     def _on_clear_canvas(self):
         """清空画布"""
@@ -537,6 +475,23 @@ class BehaviorTreeEditor(ctk.CTkFrame):
     def save_now(self):
         """立即执行自动保存"""
         self.auto_save_manager.save_now()
+    
+    def set_running(self, running: bool):
+        """设置运行状态（供外部调用）"""
+        self.toolbar.set_running(running)
+        if not running:
+            self.canvas.reset_all_status()
+    
+    def update_node_status(self, node_id: str, status: str):
+        """更新节点状态（供外部调用）"""
+        status_map = {
+            "running": NodeExecutionStatus.RUNNING,
+            "success": NodeExecutionStatus.SUCCESS,
+            "failure": NodeExecutionStatus.FAILURE,
+            "aborted": NodeExecutionStatus.ABORTED,
+        }
+        node_status = status_map.get(status, NodeExecutionStatus.IDLE)
+        self.canvas.set_node_status(node_id, node_status)
         
     def destroy(self):
         """销毁前保存"""
