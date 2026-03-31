@@ -304,16 +304,22 @@ class BehaviorTreeEditor(ctk.CTkFrame):
         self._engine.load_tree(self.canvas.get_tree_data())
         self._engine.start()
         self.toolbar.set_running(True)
+        if hasattr(self.app, 'is_running'):
+            self.app.is_running = True
     
     def _on_stop(self):
         """停止"""
         self._engine.stop()
         self.canvas.reset_all_status()
         self.toolbar.set_running(False)
+        if hasattr(self.app, 'is_running'):
+            self.app.is_running = False
     
     def _on_execution_complete(self):
         """执行完成回调"""
         self.toolbar.set_running(False)
+        if hasattr(self.app, 'is_running'):
+            self.app.is_running = False
     
     def _on_node_status(self, node_id: str, status: str):
         """节点状态变化回调（从后台线程调用）"""
