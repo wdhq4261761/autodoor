@@ -35,31 +35,31 @@ class VariableConditionNode(ConditionNode):
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
-        self.variable_name = self.config.get("variable_name", "")
-        self.operator = self.config.get("operator", "==")
-        self.compare_value = self.config.get("compare_value")
     
     def _execute_condition(self, context: "ExecutionContext") -> NodeStatus:
-        """执行变量条件检测"""
-        if not self.variable_name:
+        variable_name = self.config.get("variable_name", "")
+        operator = self.config.get("operator", "==")
+        compare_value = self.config.get("compare_value")
+        
+        if not variable_name:
             context.log(f"变量条件节点 {self.name}: 未配置变量名")
             return NodeStatus.FAILURE
         
         try:
-            actual_value = context.blackboard.get(self.variable_name)
+            actual_value = context.blackboard.get(variable_name)
             
-            if self.operator not in self.OPERATORS:
-                context.log(f"变量条件节点 {self.name}: 未知的运算符 {self.operator}")
+            if operator not in self.OPERATORS:
+                context.log(f"变量条件节点 {self.name}: 未知的运算符 {operator}")
                 return NodeStatus.FAILURE
             
-            compare_func = self.OPERATORS[self.operator]
-            result = compare_func(actual_value, self.compare_value)
+            compare_func = self.OPERATORS[operator]
+            result = compare_func(actual_value, compare_value)
             
             if result:
-                context.log(f"变量条件节点 {self.name}: {self.variable_name} {self.operator} {self.compare_value} -> 满足")
+                context.log(f"变量条件节点 {self.name}: {variable_name} {operator} {compare_value} -> 满足")
                 return NodeStatus.SUCCESS
             else:
-                context.log(f"变量条件节点 {self.name}: {self.variable_name} {self.operator} {self.compare_value} -> 不满足 (实际值: {actual_value})")
+                context.log(f"变量条件节点 {self.name}: {variable_name} {operator} {compare_value} -> 不满足 (实际值: {actual_value})")
                 return NodeStatus.FAILURE
                 
         except Exception as e:
@@ -70,8 +70,8 @@ class VariableConditionNode(ConditionNode):
         data = super().to_dict()
         data["config"] = {
             **self.config,
-            "variable_name": self.variable_name,
-            "operator": self.operator,
-            "compare_value": self.compare_value,
+            "variable_name": self.config.get("variable_name", ""),
+            "operator": self.config.get("operator", "=="),
+            "compare_value": self.config.get("compare_value"),
         }
         return data

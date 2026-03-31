@@ -1,0 +1,5 @@
+Delay 975
+Keydown "shift", 1
+Delay 685
+Keyup "shift", 1
+

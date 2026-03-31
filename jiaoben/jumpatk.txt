@@ -1,0 +1,345 @@
+Delay 524
+Keydown "x", 1
+Delay 159
+Keyup "x", 1
+Delay 397
+Keydown "space", 1
+Delay 59
+Keydown "x", 1
+Delay 69
+Keyup "space", 1
+Delay 55
+Keyup "x", 1
+Delay 425
+Keydown "space", 1
+Delay 65
+Keydown "x", 1
+Delay 78
+Keyup "space", 1
+Delay 74
+Keyup "x", 1
+Delay 413
+Keydown "space", 1
+Delay 68
+Keydown "x", 1
+Delay 71
+Keyup "space", 1
+Delay 85
+Keyup "x", 1
+Delay 424
+Keydown "space", 1
+Delay 72
+Keydown "x", 1
+Delay 78
+Keyup "space", 1
+Delay 83
+Keyup "x", 1
+Delay 393
+Keydown "space", 1
+Delay 50
+Keydown "x", 1
+Delay 74
+Keyup "space", 1
+Delay 77
+Keyup "x", 1
+Delay 404
+Keydown "space", 1
+Delay 67
+Keydown "x", 1
+Delay 75
+Keyup "space", 1
+Delay 71
+Keyup "x", 1
+Delay 423
+Keydown "space", 1
+Delay 47
+Keydown "x", 1
+Delay 71
+Keyup "space", 1
+Delay 82
+Keyup "x", 1
+Delay 410
+Keydown "space", 1
+Delay 68
+Keydown "x", 1
+Delay 72
+Keyup "space", 1
+Delay 86
+Keyup "x", 1
+Delay 400
+Keydown "space", 1
+Delay 69
+Keydown "x", 1
+Delay 69
+Keyup "space", 1
+Delay 99
+Keyup "x", 1
+Delay 420
+Keydown "space", 1
+Delay 73
+Keydown "x", 1
+Delay 84
+Keyup "space", 1
+Delay 77
+Keyup "x", 1
+Delay 419
+Keydown "space", 1
+Delay 82
+Keydown "x", 1
+Delay 80
+Keyup "space", 1
+Delay 101
+Keyup "x", 1
+Delay 399
+Keydown "x", 1
+Delay 485
+Keyup "x", 1
+Delay 163
+Keydown "space", 1
+Delay 55
+Keydown "x", 1
+Delay 89
+Keyup "space", 1
+Delay 92
+Keyup "x", 1
+Delay 399
+Keydown "space", 1
+Delay 70
+Keydown "x", 1
+Delay 78
+Keyup "space", 1
+Delay 91
+Keyup "x", 1
+Delay 405
+Keydown "space", 1
+Delay 69
+Keydown "x", 1
+Delay 81
+Keyup "space", 1
+Delay 94
+Keyup "x", 1
+Delay 411
+Keydown "space", 1
+Delay 79
+Keydown "x", 1
+Delay 68
+Keyup "space", 1
+Delay 99
+Keyup "x", 1
+Delay 771
+Keydown "left", 1
+Delay 249
+Keydown "space", 1
+Delay 82
+Keydown "x", 1
+Delay 36
+Keyup "space", 1
+Delay 141
+Keyup "x", 1
+Delay 416
+Keydown "space", 1
+Delay 72
+Keydown "x", 1
+Delay 67
+Keyup "space", 1
+Delay 86
+Keyup "x", 1
+Delay 426
+Keydown "space", 1
+Delay 66
+Keydown "x", 1
+Delay 85
+Keyup "space", 1
+Delay 87
+Keyup "x", 1
+Delay 372
+Keydown "space", 1
+Delay 88
+Keydown "x", 1
+Delay 78
+Keyup "space", 1
+Delay 84
+Keyup "x", 1
+Delay 366
+Keydown "space", 1
+Delay 65
+Keydown "x", 1
+Delay 71
+Keyup "space", 1
+Delay 85
+Keyup "x", 1
+Delay 422
+Keydown "space", 1
+Delay 84
+Keydown "x", 1
+Delay 87
+Keyup "space", 1
+Delay 78
+Keyup "x", 1
+Delay 348
+Keydown "space", 1
+Delay 71
+Keydown "x", 1
+Delay 89
+Keyup "space", 1
+Delay 86
+Keyup "x", 1
+Delay 440
+Keydown "space", 1
+Delay 67
+Keydown "x", 1
+Delay 81
+Keyup "space", 1
+Delay 69
+Keyup "x", 1
+Delay 398
+Keydown "space", 1
+Delay 89
+Keydown "x", 1
+Delay 78
+Keyup "space", 1
+Delay 99
+Keyup "x", 1
+Delay 325
+Keydown "space", 1
+Delay 64
+Keydown "x", 1
+Delay 93
+Keyup "space", 1
+Delay 77
+Keyup "x", 1
+Delay 365
+Keydown "space", 1
+Delay 63
+Keydown "x", 1
+Delay 107
+Keyup "space", 1
+Delay 72
+Keyup "x", 1
+Delay 349
+Keydown "space", 1
+Delay 74
+Keydown "x", 1
+Delay 91
+Keyup "space", 1
+Delay 81
+Keyup "x", 1
+Delay 371
+Keydown "space", 1
+Delay 79
+Keydown "x", 1
+Delay 84
+Keyup "space", 1
+Delay 85
+Keyup "x", 1
+Delay 359
+Keydown "space", 1
+Delay 99
+Keydown "x", 1
+Delay 87
+Keyup "space", 1
+Delay 91
+Keyup "x", 1
+Delay 347
+Keydown "space", 1
+Delay 65
+Keydown "x", 1
+Delay 62
+Keyup "space", 1
+Delay 112
+Keyup "x", 1
+Delay 448
+Keydown "space", 1
+Delay 83
+Keydown "x", 1
+Delay 109
+Keyup "space", 1
+Delay 77
+Keyup "x", 1
+Delay 349
+Keydown "space", 1
+Delay 64
+Keydown "x", 1
+Delay 93
+Keyup "space", 1
+Delay 85
+Keyup "x", 1
+Delay 386
+Keydown "space", 1
+Delay 65
+Keydown "x", 1
+Delay 101
+Keyup "space", 1
+Delay 85
+Keyup "x", 1
+Delay 362
+Keydown "space", 1
+Delay 69
+Keydown "x", 1
+Delay 90
+Keyup "space", 1
+Delay 91
+Keyup "x", 1
+Delay 347
+Keydown "space", 1
+Delay 69
+Keydown "x", 1
+Delay 95
+Keyup "space", 1
+Delay 89
+Keyup "x", 1
+Delay 379
+Keydown "space", 1
+Delay 61
+Keydown "x", 1
+Delay 83
+Keyup "space", 1
+Delay 112
+Keyup "x", 1
+Delay 341
+Keydown "space", 1
+Delay 68
+Keydown "x", 1
+Delay 94
+Keyup "space", 1
+Delay 91
+Keyup "x", 1
+Delay 346
+Keydown "space", 1
+Delay 81
+Keydown "x", 1
+Delay 80
+Keyup "space", 1
+Delay 101
+Keyup "x", 1
+Delay 311
+Keydown "space", 1
+Delay 71
+Keydown "x", 1
+Delay 101
+Keyup "space", 1
+Delay 86
+Keyup "x", 1
+Delay 337
+Keydown "space", 1
+Delay 81
+Keydown "x", 1
+Delay 100
+Keyup "space", 1
+Delay 59
+Keyup "x", 1
+Delay 357
+Keydown "space", 1
+Delay 82
+Keydown "x", 1
+Delay 99
+Keyup "space", 1
+Delay 78
+Keyup "x", 1
+Delay 56
+Keydown "right", 1
+Delay 50
+Keyup "left", 1
+Delay 99
+Keyup "right", 1
+

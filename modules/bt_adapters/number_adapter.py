@@ -21,16 +21,16 @@ class NumberConditionNode(ConditionNode):
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
-        self.region = tuple(self.config.get("region", (0, 0, 100, 100)))
-        self.compare_mode = self.config.get("compare_mode", "less_than")
-        self.threshold = self.config.get("threshold", 0)
-        self.save_value = self.config.get("save_value", True)
-        self.value_key = self.config.get("value_key", "last_number_value")
     
     def _execute_condition(self, context: "ExecutionContext") -> NodeStatus:
-        """执行数字条件检测"""
+        region = tuple(self.config.get("region", (0, 0, 100, 100)))
+        compare_mode = self.config.get("compare_mode", "less_than")
+        threshold = self.config.get("threshold", 0)
+        save_value = self.config.get("save_value", True)
+        value_key = self.config.get("value_key", "last_number_value")
+        
         try:
-            screenshot = context.get_screenshot(self.region)
+            screenshot = context.get_screenshot(region)
             
             if screenshot is None:
                 context.log(f"数字节点 {self.name}: 截图失败")
@@ -50,16 +50,16 @@ class NumberConditionNode(ConditionNode):
                 context.log(f"数字节点 {self.name}: 无法解析数字 '{text}'")
                 return NodeStatus.FAILURE
             
-            if self.save_value:
-                context.blackboard.set(self.value_key, number)
+            if save_value:
+                context.blackboard.set(value_key, number)
             
-            result = self._compare(number, self.threshold, self.compare_mode)
+            result = self._compare(number, threshold, compare_mode)
             
             if result:
-                context.log(f"数字节点 {self.name}: 条件满足 ({number} {self.compare_mode} {self.threshold})")
+                context.log(f"数字节点 {self.name}: 条件满足 ({number} {compare_mode} {threshold})")
                 return NodeStatus.SUCCESS
             else:
-                context.log(f"数字节点 {self.name}: 条件不满足 ({number} {self.compare_mode} {self.threshold})")
+                context.log(f"数字节点 {self.name}: 条件不满足 ({number} {compare_mode} {threshold})")
                 return NodeStatus.FAILURE
                 
         except Exception as e:
@@ -67,7 +67,6 @@ class NumberConditionNode(ConditionNode):
             return NodeStatus.FAILURE
     
     def _compare(self, value: int, threshold: int, mode: str) -> bool:
-        """比较数字"""
         if mode == "less_than":
             return value < threshold
         elif mode == "less_equal":
@@ -86,10 +85,10 @@ class NumberConditionNode(ConditionNode):
         data = super().to_dict()
         data["config"] = {
             **self.config,
-            "region": list(self.region),
-            "compare_mode": self.compare_mode,
-            "threshold": self.threshold,
-            "save_value": self.save_value,
-            "value_key": self.value_key,
+            "region": list(self.config.get("region", (0, 0, 100, 100))),
+            "compare_mode": self.config.get("compare_mode", "less_than"),
+            "threshold": self.config.get("threshold", 0),
+            "save_value": self.config.get("save_value", True),
+            "value_key": self.config.get("value_key", "last_number_value"),
         }
         return data

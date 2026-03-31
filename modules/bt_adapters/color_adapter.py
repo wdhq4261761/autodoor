@@ -21,17 +21,17 @@ class ColorConditionNode(ConditionNode):
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
-        self.region = tuple(self.config.get("region", (0, 0, 100, 100)))
-        self.target_color = tuple(self.config.get("target_color", (255, 0, 0)))
-        self.tolerance = self.config.get("tolerance", 10)
-        self.min_pixels = self.config.get("min_pixels", 1)
-        self.save_position = self.config.get("save_position", True)
-        self.position_key = self.config.get("position_key", "last_color_position")
     
     def _execute_condition(self, context: "ExecutionContext") -> NodeStatus:
-        """执行颜色条件检测"""
+        region = tuple(self.config.get("region", (0, 0, 100, 100)))
+        target_color = tuple(self.config.get("target_color", (255, 0, 0)))
+        tolerance = self.config.get("tolerance", 10)
+        min_pixels = self.config.get("min_pixels", 1)
+        save_position = self.config.get("save_position", True)
+        position_key = self.config.get("position_key", "last_color_position")
+        
         try:
-            screenshot = context.get_screenshot(self.region)
+            screenshot = context.get_screenshot(region)
             
             if screenshot is None:
                 context.log(f"颜色节点 {self.name}: 截图失败")
@@ -41,16 +41,16 @@ class ColorConditionNode(ConditionNode):
             
             matched, position, match_pixels = ColorRecognizer.match_color(
                 screenshot,
-                self.target_color,
-                self.tolerance,
+                target_color,
+                tolerance,
                 log_func=context.log
             )
             
-            if matched and match_pixels >= self.min_pixels:
-                if self.save_position and position:
-                    abs_x = self.region[0] + position[0]
-                    abs_y = self.region[1] + position[1]
-                    context.blackboard.set(self.position_key, (abs_x, abs_y))
+            if matched and match_pixels >= min_pixels:
+                if save_position and position:
+                    abs_x = region[0] + position[0]
+                    abs_y = region[1] + position[1]
+                    context.blackboard.set(position_key, (abs_x, abs_y))
                 context.log(f"颜色节点 {self.name}: 匹配成功 ({match_pixels}像素)")
                 return NodeStatus.SUCCESS
             else:
@@ -65,11 +65,11 @@ class ColorConditionNode(ConditionNode):
         data = super().to_dict()
         data["config"] = {
             **self.config,
-            "region": list(self.region),
-            "target_color": list(self.target_color),
-            "tolerance": self.tolerance,
-            "min_pixels": self.min_pixels,
-            "save_position": self.save_position,
-            "position_key": self.position_key,
+            "region": list(self.config.get("region", (0, 0, 100, 100))),
+            "target_color": list(self.config.get("target_color", (255, 0, 0))),
+            "tolerance": self.config.get("tolerance", 10),
+            "min_pixels": self.config.get("min_pixels", 1),
+            "save_position": self.config.get("save_position", True),
+            "position_key": self.config.get("position_key", "last_color_position"),
         }
         return data

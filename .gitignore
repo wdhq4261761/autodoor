@@ -83,5 +83,5 @@ autodoor_config.json
 
 # Git worktrees
 .worktrees/
-.script/
-.data/
+script/
+data/

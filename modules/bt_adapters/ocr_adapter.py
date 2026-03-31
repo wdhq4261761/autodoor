@@ -21,17 +21,16 @@ class OCRConditionNode(ConditionNode):
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
-        self.region = tuple(self.config.get("region", (0, 0, 100, 100)))
-        self.keywords = self.config.get("keywords", "")
-        self.language = self.config.get("language", "eng")
-        self.match_mode = self.config.get("match_mode", "any")
-        self.save_position = self.config.get("save_position", True)
-        self.position_key = self.config.get("position_key", "last_ocr_position")
     
     def _execute_condition(self, context: "ExecutionContext") -> NodeStatus:
-        """执行 OCR 条件检测"""
+        region = tuple(self.config.get("region", (0, 0, 100, 100)))
+        keywords = self.config.get("keywords", "")
+        language = self.config.get("language", "eng")
+        save_position = self.config.get("save_position", True)
+        position_key = self.config.get("position_key", "last_ocr_position")
+        
         try:
-            screenshot = context.get_screenshot(self.region)
+            screenshot = context.get_screenshot(region)
             
             if screenshot is None:
                 context.log(f"OCR节点 {self.name}: 截图失败")
@@ -41,14 +40,14 @@ class OCRConditionNode(ConditionNode):
             
             matched, position = OCRRecognizer.recognize(
                 screenshot,
-                self.keywords,
-                self.language,
+                keywords,
+                language,
                 log_func=context.log
             )
             
             if matched:
-                if self.save_position and position:
-                    context.blackboard.set(self.position_key, position)
+                if save_position and position:
+                    context.blackboard.set(position_key, position)
                 context.log(f"OCR节点 {self.name}: 检测到关键词")
                 return NodeStatus.SUCCESS
             else:
@@ -63,11 +62,11 @@ class OCRConditionNode(ConditionNode):
         data = super().to_dict()
         data["config"] = {
             **self.config,
-            "region": list(self.region),
-            "keywords": self.keywords,
-            "language": self.language,
-            "match_mode": self.match_mode,
-            "save_position": self.save_position,
-            "position_key": self.position_key,
+            "region": list(self.config.get("region", (0, 0, 100, 100))),
+            "keywords": self.config.get("keywords", ""),
+            "language": self.config.get("language", "eng"),
+            "match_mode": self.config.get("match_mode", "any"),
+            "save_position": self.config.get("save_position", True),
+            "position_key": self.config.get("position_key", "last_ocr_position"),
         }
         return data

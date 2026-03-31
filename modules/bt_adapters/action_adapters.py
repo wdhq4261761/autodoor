@@ -22,20 +22,21 @@ class KeyPressNode(ActionNode):
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
-        self.key = self.config.get("key", "")
-        self.action = self.config.get("action", "press")
-        self.duration = self.config.get("duration", 0)
     
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.key:
+        key = self.config.get("key", "")
+        action = self.config.get("action", "press")
+        duration = self.config.get("duration", 0)
+        
+        if not key:
             context.log(f"按键节点 {self.name}: 未配置按键")
             return NodeStatus.FAILURE
         
         try:
-            success = context.execute_key_press(self.key, self.action, self.duration)
+            success = context.execute_key_press(key, action, duration)
             
             if success:
-                context.log(f"按键节点 {self.name}: 执行按键 {self.key}")
+                context.log(f"按键节点 {self.name}: 执行按键 {key}")
                 return NodeStatus.SUCCESS
             else:
                 context.log(f"按键节点 {self.name}: 按键执行失败")
@@ -49,9 +50,9 @@ class KeyPressNode(ActionNode):
         data = super().to_dict()
         data["config"] = {
             **self.config,
-            "key": self.key,
-            "action": self.action,
-            "duration": self.duration,
+            "key": self.config.get("key", ""),
+            "action": self.config.get("action", "press"),
+            "duration": self.config.get("duration", 0),
         }
         return data
 
@@ -65,23 +66,24 @@ class MouseClickNode(ActionNode):
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
-        self.button = self.config.get("button", "left")
-        self.position = self.config.get("position")
-        self.use_blackboard = self.config.get("use_blackboard", False)
-        self.position_key = self.config.get("position_key", "last_ocr_position")
     
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
+        button = self.config.get("button", "left")
+        position = self.config.get("position")
+        use_blackboard = self.config.get("use_blackboard", False)
+        position_key = self.config.get("position_key", "last_ocr_position")
+        
         try:
-            click_position = self.position
+            click_position = position
             
-            if self.use_blackboard:
-                click_position = context.blackboard.get(self.position_key)
+            if use_blackboard:
+                click_position = context.blackboard.get(position_key)
             
-            success = context.execute_mouse_click(self.button, click_position)
+            success = context.execute_mouse_click(button, click_position)
             
             if success:
                 pos_str = click_position if click_position else "当前位置"
-                context.log(f"鼠标节点 {self.name}: 执行点击 {self.button} @ {pos_str}")
+                context.log(f"鼠标节点 {self.name}: 执行点击 {button} @ {pos_str}")
                 return NodeStatus.SUCCESS
             else:
                 context.log(f"鼠标节点 {self.name}: 点击执行失败")
@@ -95,10 +97,10 @@ class MouseClickNode(ActionNode):
         data = super().to_dict()
         data["config"] = {
             **self.config,
-            "button": self.button,
-            "position": self.position,
-            "use_blackboard": self.use_blackboard,
-            "position_key": self.position_key,
+            "button": self.config.get("button", "left"),
+            "position": self.config.get("position"),
+            "use_blackboard": self.config.get("use_blackboard", False),
+            "position_key": self.config.get("position_key", "last_ocr_position"),
         }
         return data
 
@@ -112,18 +114,19 @@ class MouseMoveNode(ActionNode):
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
-        self.position = self.config.get("position")
-        self.use_blackboard = self.config.get("use_blackboard", False)
-        self.position_key = self.config.get("position_key", "last_ocr_position")
-        self.relative = self.config.get("relative", False)
-        self.smooth = self.config.get("smooth", True)
     
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
+        position = self.config.get("position")
+        use_blackboard = self.config.get("use_blackboard", False)
+        position_key = self.config.get("position_key", "last_ocr_position")
+        relative = self.config.get("relative", False)
+        smooth = self.config.get("smooth", True)
+        
         try:
-            move_position = self.position
+            move_position = position
             
-            if self.use_blackboard:
-                move_position = context.blackboard.get(self.position_key)
+            if use_blackboard:
+                move_position = context.blackboard.get(position_key)
             
             if not move_position:
                 context.log(f"鼠标移动节点 {self.name}: 未指定位置")
@@ -133,7 +136,7 @@ class MouseMoveNode(ActionNode):
                 context.log(f"鼠标移动节点 {self.name}: 输入控制器不可用")
                 return NodeStatus.FAILURE
             
-            if self.relative:
+            if relative:
                 context.input_controller.move_relative(move_position[0], move_position[1])
             else:
                 context.input_controller.move_to(move_position[0], move_position[1])
@@ -149,11 +152,11 @@ class MouseMoveNode(ActionNode):
         data = super().to_dict()
         data["config"] = {
             **self.config,
-            "position": self.position,
-            "use_blackboard": self.use_blackboard,
-            "position_key": self.position_key,
-            "relative": self.relative,
-            "smooth": self.smooth,
+            "position": self.config.get("position"),
+            "use_blackboard": self.config.get("use_blackboard", False),
+            "position_key": self.config.get("position_key", "last_ocr_position"),
+            "relative": self.config.get("relative", False),
+            "smooth": self.config.get("smooth", True),
         }
         return data
 
@@ -167,17 +170,18 @@ class DelayNode(ActionNode):
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
-        self.duration_ms = self.config.get("duration_ms", 1000)
         self._delay_start: Optional[float] = None
     
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
+        duration_ms = self.config.get("duration_ms", 1000)
+        
         if self._delay_start is None:
             self._delay_start = time.time() * 1000
-            context.log(f"延时节点 {self.name}: 开始延时 {self.duration_ms}ms")
+            context.log(f"延时节点 {self.name}: 开始延时 {duration_ms}ms")
         
         elapsed = time.time() * 1000 - self._delay_start
         
-        if elapsed >= self.duration_ms:
+        if elapsed >= duration_ms:
             context.log(f"延时节点 {self.name}: 延时完成")
             self._delay_start = None
             return NodeStatus.SUCCESS
@@ -192,7 +196,7 @@ class DelayNode(ActionNode):
         data = super().to_dict()
         data["config"] = {
             **self.config,
-            "duration_ms": self.duration_ms,
+            "duration_ms": self.config.get("duration_ms", 1000),
         }
         return data
 
@@ -206,30 +210,37 @@ class SetVariableNode(ActionNode):
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
-        self.variable_name = self.config.get("variable_name", "")
-        self.value = self.config.get("value")
-        self.value_type = self.config.get("value_type", "static")
+    
+    def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
+        variable_name = self.config.get("variable_name", "")
+        value = self.config.get("value")
+        value_type = self.config.get("value_type", "static")
         self.operation = self.config.get("operation", "set")
     
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.variable_name:
+        variable_name = self.config.get("variable_name", "")
+        value = self.config.get("value")
+        value_type = self.config.get("value_type", "static")
+        operation = self.config.get("operation", "set")
+        
+        if not variable_name:
             context.log(f"设置变量节点 {self.name}: 未配置变量名")
             return NodeStatus.FAILURE
         
         try:
-            if self.operation == "set":
-                context.blackboard.set(self.variable_name, self.value)
-                context.log(f"设置变量节点 {self.name}: 设置 {self.variable_name} = {self.value}")
+            if operation == "set":
+                context.blackboard.set(variable_name, value)
+                context.log(f"设置变量节点 {self.name}: 设置 {variable_name} = {value}")
             
-            elif self.operation == "increment":
-                result = context.blackboard.increment(self.variable_name, self.value if isinstance(self.value, (int, float)) else 1)
-                context.log(f"设置变量节点 {self.name}: {self.variable_name} += {self.value if isinstance(self.value, (int, float)) else 1} = {result}")
+            elif operation == "increment":
+                result = context.blackboard.increment(variable_name, value if isinstance(value, (int, float)) else 1)
+                context.log(f"设置变量节点 {self.name}: {variable_name} += {value if isinstance(value, (int, float)) else 1} = {result}")
             
-            elif self.operation == "delete":
-                context.blackboard.delete(self.variable_name)
-                context.log(f"设置变量节点 {self.name}: 删除变量 {self.variable_name}")
+            elif operation == "delete":
+                context.blackboard.delete(variable_name)
+                context.log(f"设置变量节点 {self.name}: 删除变量 {variable_name}")
             
-            elif self.operation == "clear":
+            elif operation == "clear":
                 context.blackboard.clear()
                 context.log(f"设置变量节点 {self.name}: 清空黑板")
             
@@ -243,10 +254,10 @@ class SetVariableNode(ActionNode):
         data = super().to_dict()
         data["config"] = {
             **self.config,
-            "variable_name": self.variable_name,
-            "value": self.value,
-            "value_type": self.value_type,
-            "operation": self.operation,
+            "variable_name": self.config.get("variable_name", ""),
+            "value": self.config.get("value"),
+            "value_type": self.config.get("value_type", "static"),
+            "operation": self.config.get("operation", "set"),
         }
         return data
 
@@ -260,12 +271,13 @@ class CodeNode(ActionNode):
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
-        self.code_path = self.config.get("code_path", "")
-        self.code_type = self.config.get("code_type", "auto")
-        self.args = self.config.get("args", [])
     
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.code_path:
+        code_path = self.config.get("code_path", "")
+        code_type = self.config.get("code_type", "auto")
+        args = self.config.get("args", [])
+        
+        if not code_path:
             context.log(f"代码节点 {self.name}: 未配置代码路径")
             return NodeStatus.FAILURE
         
@@ -273,24 +285,24 @@ class CodeNode(ActionNode):
             import subprocess
             from pathlib import Path
             
-            code_path = Path(self.code_path)
-            if not code_path.exists():
-                context.log(f"代码节点 {self.name}: 代码文件不存在 {self.code_path}")
+            code_file = Path(code_path)
+            if not code_file.exists():
+                context.log(f"代码节点 {self.name}: 代码文件不存在 {code_path}")
                 return NodeStatus.FAILURE
             
-            if self.code_type == "auto":
-                if code_path.suffix == ".py":
-                    cmd = ["python", str(code_path)] + self.args
-                elif code_path.suffix in [".bat", ".cmd"]:
-                    cmd = [str(code_path)] + self.args
-                elif code_path.suffix == ".ps1":
-                    cmd = ["powershell", "-File", str(code_path)] + self.args
+            if code_type == "auto":
+                if code_file.suffix == ".py":
+                    cmd = ["python", str(code_file)] + args
+                elif code_file.suffix in [".bat", ".cmd"]:
+                    cmd = [str(code_file)] + args
+                elif code_file.suffix == ".ps1":
+                    cmd = ["powershell", "-File", str(code_file)] + args
                 else:
-                    cmd = [str(code_path)] + self.args
+                    cmd = [str(code_file)] + args
             else:
-                cmd = [str(code_path)] + self.args
+                cmd = [str(code_file)] + args
             
-            context.log(f"代码节点 {self.name}: 执行代码 {self.code_path}")
+            context.log(f"代码节点 {self.name}: 执行代码 {code_path}")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             
             if result.returncode == 0:
@@ -311,9 +323,9 @@ class CodeNode(ActionNode):
         data = super().to_dict()
         data["config"] = {
             **self.config,
-            "code_path": self.code_path,
-            "code_type": self.code_type,
-            "args": self.args,
+            "code_path": self.config.get("code_path", ""),
+            "code_type": self.config.get("code_type", "auto"),
+            "args": self.config.get("args", []),
         }
         return data
 
@@ -327,11 +339,12 @@ class ScriptNode(ActionNode):
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
-        self.script_path = self.config.get("script_path", "")
-        self.loop = self.config.get("loop", False)
     
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
-        if not self.script_path:
+        script_path = self.config.get("script_path", "")
+        loop = self.config.get("loop", False)
+        
+        if not script_path:
             context.log(f"脚本节点 {self.name}: 未配置脚本路径")
             return NodeStatus.FAILURE
         
@@ -339,19 +352,19 @@ class ScriptNode(ActionNode):
             from pathlib import Path
             from modules.script import ScriptExecutor
             
-            script_path = Path(self.script_path)
-            if not script_path.exists():
-                context.log(f"脚本节点 {self.name}: 脚本文件不存在 {self.script_path}")
+            script_file = Path(script_path)
+            if not script_file.exists():
+                context.log(f"脚本节点 {self.name}: 脚本文件不存在 {script_path}")
                 return NodeStatus.FAILURE
             
-            with open(script_path, 'r', encoding='utf-8') as f:
+            with open(script_file, 'r', encoding='utf-8') as f:
                 script_content = f.read()
             
             if not script_content.strip():
                 context.log(f"脚本节点 {self.name}: 脚本内容为空")
                 return NodeStatus.FAILURE
             
-            context.log(f"脚本节点 {self.name}: 执行脚本 {self.script_path}")
+            context.log(f"脚本节点 {self.name}: 执行脚本 {script_path}")
             
             executor = ScriptExecutor(context.app)
             executor.run_script_once(script_content)
@@ -374,7 +387,7 @@ class ScriptNode(ActionNode):
         data = super().to_dict()
         data["config"] = {
             **self.config,
-            "script_path": self.script_path,
-            "loop": self.loop,
+            "script_path": self.config.get("script_path", ""),
+            "loop": self.config.get("loop", False),
         }
         return data

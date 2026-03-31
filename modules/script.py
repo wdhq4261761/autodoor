@@ -203,7 +203,11 @@ class ScriptExecutor(RecorderBase):
             except Exception as e:
                 error_msg = f"脚本执行出错: {str(e)}"
                 self.app.logging_manager.log_message(error_msg)
-                self.app.status_var.set(f"执行错误: {str(e)}")
+                try:
+                    if hasattr(self.app, 'root') and hasattr(self.app, 'status_var'):
+                        self.app.root.after(0, lambda: self.app.status_var.set(f"执行错误: {str(e)}"))
+                except Exception:
+                    pass
             finally:
                 for key in pressed_keys:
                     try:
@@ -276,7 +280,11 @@ class ScriptExecutor(RecorderBase):
             except Exception as e:
                 error_msg = f"脚本执行出错: {str(e)}"
                 self.app.logging_manager.log_message(error_msg)
-                self.app.status_var.set(f"执行错误: {str(e)}")
+                try:
+                    if hasattr(self.app, 'root') and hasattr(self.app, 'status_var'):
+                        self.app.root.after(0, lambda: self.app.status_var.set(f"执行错误: {str(e)}"))
+                except Exception:
+                    pass
             finally:
                 for key in pressed_keys:
                     try:
