@@ -19,7 +19,7 @@ from core.events import EventManager
 from core.logging import LoggingManager
 from core.utils import exit_program
 from core.controller import ModuleController
-from core.proxy import OCRProxy, TimedProxy, NumberProxy, ScriptProxy, ColorProxy, ImageDetectionProxy, UIProxy, BackgroundProxy, BehaviorTreeProxy, BehaviorTreeProxy
+from core.proxy import OCRProxy, TimedProxy, NumberProxy, ScriptProxy, ColorProxy, ImageDetectionProxy, UIProxy, BackgroundProxy, BehaviorTreeProxy
 from input.permissions import PermissionManager
 from input.controller import InputController
 from input.keyboard import setup_shortcuts
@@ -350,9 +350,6 @@ class AutoDoorOCR:
         create_background_tab(self)
         create_script_tab(self)
         create_basic_tab(self)
-        self.behavior_tree.create_tab(self.content_area)
-        
-        self._show_page('home')
         self.behavior_tree.create_tab(self.content_area)
         
         self._show_page('home')
