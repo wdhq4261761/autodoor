@@ -1,0 +1,127 @@
+Delay 1122
+MoveTo 1726, 1352
+LeftDown 1
+Delay 87
+MoveTo 1726, 1352
+LeftUp 1
+Delay 4406
+MoveTo 1025, 875
+LeftDown 1
+Delay 88
+MoveTo 1025, 875
+LeftUp 1
+Delay 1217
+MoveTo 1696, 338
+LeftDown 1
+Delay 95
+MoveTo 1696, 338
+LeftUp 1
+Delay 1402
+MoveTo 1351, 763
+LeftDown 1
+Delay 77
+MoveTo 1351, 763
+LeftUp 1
+Delay 972
+MoveTo 1128, 343
+LeftDown 1
+Delay 116
+MoveTo 1128, 343
+LeftUp 1
+Delay 949
+Keydown "right", 1
+Delay 334
+Keydown "up", 1
+Delay 89
+Keyup "up", 1
+Delay 125
+Keydown "up", 1
+Delay 86
+Keyup "up", 1
+Delay 136
+Keydown "up", 1
+Delay 109
+Keyup "up", 1
+Delay 71
+Keydown "up", 1
+Delay 98
+Keyup "up", 1
+Delay 125
+Keydown "up", 1
+Delay 102
+Keyup "up", 1
+Delay 89
+Keydown "up", 1
+Delay 100
+Keyup "up", 1
+Delay 135
+Keydown "up", 1
+Delay 102
+Keyup "up", 1
+Delay 77
+Keydown "up", 1
+Delay 95
+Keyup "up", 1
+Delay 115
+Keydown "up", 1
+Delay 122
+Keyup "up", 1
+Delay 85
+Keydown "up", 1
+Delay 95
+Keyup "up", 1
+Delay 93
+Keydown "up", 1
+Delay 118
+Keyup "up", 1
+Delay 70
+Keydown "up", 1
+Delay 103
+Keyup "up", 1
+Delay 67
+Keydown "up", 1
+Delay 99
+Keyup "up", 1
+Delay 84
+Keydown "up", 1
+Delay 110
+Keyup "up", 1
+Delay 61
+Keydown "up", 1
+Delay 100
+Keyup "up", 1
+Delay 74
+Keydown "up", 1
+Delay 72
+Keyup "up", 1
+Delay 65
+Keydown "up", 1
+Delay 84
+Keyup "up", 1
+Delay 86
+Keydown "up", 1
+Delay 73
+Keyup "up", 1
+Delay 145
+Keydown "up", 1
+Delay 87
+Keyup "up", 1
+Delay 85
+Keydown "up", 1
+Delay 112
+Keyup "up", 1
+Delay 93
+Keydown "up", 1
+Delay 91
+Keyup "up", 1
+Delay 87
+Keydown "up", 1
+Delay 108
+Keyup "up", 1
+Delay 77
+Keydown "up", 1
+Delay 113
+Keyup "right", 1
+Delay 57
+Keyup "up", 1
+

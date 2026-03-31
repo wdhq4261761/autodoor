@@ -1,3 +1,4 @@
+KeyDown "Right", 1
 Delay 524
 Keydown "x", 1
 Delay 159
@@ -342,4 +343,5 @@ Delay 50
 Keyup "left", 1
 Delay 99
 Keyup "right", 1
+
 

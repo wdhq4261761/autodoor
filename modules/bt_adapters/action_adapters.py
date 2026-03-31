@@ -335,53 +335,67 @@ class ScriptNode(ActionNode):
     脚本动作节点
     
     执行原项目脚本格式的txt文件，支持按键、鼠标、延时等命令
+    非阻塞模式：每次tick检查脚本是否完成
     """
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
+        self._executor: Optional[Any] = None
+        self._script_started = False
     
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
         script_path = self.config.get("script_path", "")
-        loop = self.config.get("loop", False)
         
         if not script_path:
             context.log(f"脚本节点 {self.name}: 未配置脚本路径")
             return NodeStatus.FAILURE
         
         try:
-            from pathlib import Path
-            from modules.script import ScriptExecutor
+            if not self._script_started:
+                from pathlib import Path
+                from modules.script import ScriptExecutor
+                
+                script_file = Path(script_path)
+                if not script_file.exists():
+                    context.log(f"脚本节点 {self.name}: 脚本文件不存在 {script_path}")
+                    return NodeStatus.FAILURE
+                
+                with open(script_file, 'r', encoding='utf-8') as f:
+                    script_content = f.read()
+                
+                if not script_content.strip():
+                    context.log(f"脚本节点 {self.name}: 脚本内容为空")
+                    return NodeStatus.FAILURE
+                
+                context.log(f"脚本节点 {self.name}: 开始执行脚本 {script_path}")
+                
+                self._executor = ScriptExecutor(context.app)
+                self._executor.run_script_once(script_content)
+                self._script_started = True
+                return NodeStatus.RUNNING
             
-            script_file = Path(script_path)
-            if not script_file.exists():
-                context.log(f"脚本节点 {self.name}: 脚本文件不存在 {script_path}")
-                return NodeStatus.FAILURE
-            
-            with open(script_file, 'r', encoding='utf-8') as f:
-                script_content = f.read()
-            
-            if not script_content.strip():
-                context.log(f"脚本节点 {self.name}: 脚本内容为空")
-                return NodeStatus.FAILURE
-            
-            context.log(f"脚本节点 {self.name}: 执行脚本 {script_path}")
-            
-            executor = ScriptExecutor(context.app)
-            executor.run_script_once(script_content)
-            
-            import time
-            while executor.is_running:
+            if self._executor and self._executor.is_running:
                 if not context.check_running():
-                    executor.stop_script()
+                    self._executor.stop_script()
                     return NodeStatus.ABORTED
-                time.sleep(0.1)
+                return NodeStatus.RUNNING
             
-            context.log(f"脚本节点 {self.name}: 执行完成")
+            context.log(f"脚本节点 {self.name}: 脚本执行完成")
             return NodeStatus.SUCCESS
                 
         except Exception as e:
             context.log(f"脚本节点 {self.name}: 执行出错 - {e}")
             return NodeStatus.FAILURE
+    
+    def reset(self) -> None:
+        super().reset()
+        if self._executor and self._executor.is_running:
+            try:
+                self._executor.stop_script()
+            except Exception:
+                pass
+        self._executor = None
+        self._script_started = False
     
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
