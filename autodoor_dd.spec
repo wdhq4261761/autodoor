@@ -4,6 +4,7 @@ block_cipher = None
 
 import os
 import sys
+from PyInstaller.utils.hooks import collect_submodules
 project_root = os.path.abspath('.')
 
 tesseract_files = []
@@ -151,7 +152,7 @@ a = Analysis(
         'pywintypes',
         'pythoncom',
         'ctypes',
-    ],
+    ] + collect_submodules('modules.persistence') + collect_submodules('modules.behavior_tree') + collect_submodules('modules.bt_adapters') + collect_submodules('ui.bt_editor'),
     hookspath=['hooks'],
     hooksconfig={},
     runtime_hooks=['hooks/hook_dd_input.py'],
