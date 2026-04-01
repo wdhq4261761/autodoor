@@ -589,8 +589,11 @@ class ConfigManager:
         if 'file_path' in bt_config and bt_config['file_path']:
             file_path = bt_config['file_path']
             if hasattr(self.app, 'behavior_tree') and hasattr(self.app.behavior_tree, 'editor'):
-                self.app.behavior_tree.editor.file_path = file_path
-                self.app.behavior_tree.editor.toolbar.set_file_path(file_path)
+                import os
+                if os.path.exists(file_path):
+                    self.app.behavior_tree.editor.file_path = file_path
+                    self.app.behavior_tree.editor.toolbar.set_file_path(file_path)
+                    self.app.behavior_tree.editor._on_load(file_path)
     
     def defer_save_config(self):
         """

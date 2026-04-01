@@ -582,7 +582,13 @@ def save_script(app):
     if current_path and current_path != "未保存":
         file_path = current_path
     else:
+        import os
+        initial_dir = None
+        if hasattr(app, 'script_file_path') and app.script_file_path:
+            initial_dir = os.path.dirname(app.script_file_path)
+        
         file_path = filedialog.asksaveasfilename(
+            initialdir=initial_dir,
             defaultextension=".txt",
             filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")],
             title="保存脚本"
@@ -603,7 +609,13 @@ def save_script(app):
             messagebox.showerror("错误", f"保存脚本失败: {str(e)}")
 
 def save_script_as(app):
+    import os
+    initial_dir = None
+    if hasattr(app, 'script_file_path') and app.script_file_path:
+        initial_dir = os.path.dirname(app.script_file_path)
+    
     file_path = filedialog.asksaveasfilename(
+        initialdir=initial_dir,
         defaultextension=".txt",
         filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")],
         title="另存为"
@@ -626,7 +638,13 @@ def load_script(app):
     if not check_script_modified(app):
         return
     
+    initial_dir = None
+    if hasattr(app, 'script_file_path') and app.script_file_path:
+        import os
+        initial_dir = os.path.dirname(app.script_file_path)
+    
     file_path = filedialog.askopenfilename(
+        initialdir=initial_dir,
         filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")],
         title="打开脚本"
     )

@@ -81,7 +81,8 @@ class ScreenshotManager:
                 self.last_full_screenshot = ImageGrab.grab(all_screens=True)
                 self.last_time = current_time
                 return self.last_full_screenshot.copy()
-            except Exception:
+            except Exception as e:
+                print(f"[ScreenshotManager] 全屏截图失败: {e}")
                 return None
     
     def get_region_screenshot(self, region, priority: int = 0):
@@ -96,10 +97,12 @@ class ScreenshotManager:
             PIL.Image: 区域截图，失败返回 None
         """
         if not region:
+            print(f"[ScreenshotManager] 区域截图失败: region 为空")
             return None
         
         full_screenshot = self.get_full_screenshot(priority)
         if full_screenshot is None:
+            print(f"[ScreenshotManager] 区域截图失败: 全屏截图返回 None")
             return None
         
         try:
@@ -113,7 +116,8 @@ class ScreenshotManager:
             bottom = max(y1, y2) - offset_y
             
             return full_screenshot.crop((left, top, right, bottom))
-        except Exception:
+        except Exception as e:
+            print(f"[ScreenshotManager] 区域截图裁剪失败: {e}, region={region}")
             return None
     
     def clear_cache(self):

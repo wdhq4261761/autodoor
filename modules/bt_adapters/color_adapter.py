@@ -23,12 +23,18 @@ class ColorConditionNode(ConditionNode):
         super().__init__(node_id, config)
     
     def _execute_condition(self, context: "ExecutionContext") -> NodeStatus:
-        region = tuple(self.config.get("region", (0, 0, 100, 100)))
-        target_color = tuple(self.config.get("target_color", (255, 0, 0)))
+        region_config = self.config.get("region", (0, 0, 100, 100))
+        region = self._parse_region(region_config)
+        
+        target_color_config = self.config.get("target_color", (255, 0, 0))
+        target_color = self._parse_color(target_color_config)
+        
         tolerance = self.config.get("tolerance", 10)
         min_pixels = self.config.get("min_pixels", 1)
         save_position = self.config.get("save_position", True)
-        position_key = self.config.get("position_key", "last_color_position")
+        position_key = self.config.get("position_key", "last_detection_position")
+        
+        context.log(f"颜色节点 {self.name}: 开始执行, region={region}, color={target_color}")
         
         try:
             screenshot = context.get_screenshot(region)
@@ -60,6 +66,38 @@ class ColorConditionNode(ConditionNode):
         except Exception as e:
             context.log(f"颜色节点 {self.name}: 执行出错 - {e}")
             return NodeStatus.FAILURE
+    
+    def _parse_region(self, region_config) -> tuple:
+        if region_config is None:
+            return (0, 0, 100, 100)
+        elif isinstance(region_config, (list, tuple)):
+            return tuple(region_config)
+        elif isinstance(region_config, str):
+            try:
+                parts = [int(x.strip()) for x in region_config.split(",")]
+                if len(parts) == 4:
+                    return tuple(parts)
+            except (ValueError, AttributeError):
+                pass
+        return (0, 0, 100, 100)
+    
+    def _parse_color(self, color_config) -> tuple:
+        if color_config is None:
+            return (255, 0, 0)
+        elif isinstance(color_config, (list, tuple)):
+            return tuple(int(c) for c in color_config)
+        elif isinstance(color_config, str):
+            import re
+            match = re.search(r'RGB\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)', color_config, re.IGNORECASE)
+            if match:
+                return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+            try:
+                parts = [int(x.strip()) for x in color_config.split(",")]
+                if len(parts) >= 3:
+                    return tuple(parts[:3])
+            except (ValueError, AttributeError):
+                pass
+        return (255, 0, 0)
     
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()

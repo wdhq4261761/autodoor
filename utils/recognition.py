@@ -16,7 +16,8 @@ class OCRRecognizer:
     
     @staticmethod
     def recognize(image, keywords: str, language: str = "eng", 
-                  log_func=None, group_index: int = None) -> Tuple[bool, Optional[Tuple[int, int]]]:
+                  log_func=None, group_index: int = None, 
+                  return_text: bool = False) -> Tuple[bool, Optional[Tuple[int, int]], Optional[str]]:
         """
         执行OCR识别并查找关键词
         
@@ -26,38 +27,50 @@ class OCRRecognizer:
             language: 识别语言
             log_func: 日志函数
             group_index: 组索引（用于日志）
+            return_text: 是否返回识别的文本
         
         Returns:
-            tuple: (matched, click_position)
+            tuple: (matched, click_position, recognized_text)
                 - matched: 是否匹配到关键词
                 - click_position: 点击位置（相对于图像），未匹配返回None
+                - recognized_text: 识别的文本（仅当return_text=True时返回）
         """
         if not keywords:
-            return (False, None)
+            if return_text:
+                return (False, None, None)
+            return (False, None, None)
         
         try:
             keyword_list = [k.strip().lower() for k in keywords.split(",") if k.strip()]
             if not keyword_list:
-                return (False, None)
+                if return_text:
+                    return (False, None, None)
+                return (False, None, None)
             
             text = pytesseract.image_to_string(image, lang=language, config=OCRRecognizer.TESSERACT_CONFIG)
             text_lower = text.lower()
             
             if not any(kw in text_lower for kw in keyword_list):
-                return (False, None)
+                if return_text:
+                    return (False, None, text.strip())
+                return (False, None, None)
             
             if log_func:
                 prefix = f"监控组{group_index + 1}" if group_index is not None else ""
                 log_func(f"{prefix}识别到关键词: {text.strip()}")
             
             click_pos = OCRRecognizer.find_keyword_position(image, keyword_list, language)
-            return (True, click_pos)
+            if return_text:
+                return (True, click_pos, text.strip())
+            return (True, click_pos, None)
             
         except Exception as e:
             if log_func:
                 prefix = f"监控组{group_index + 1}" if group_index is not None else ""
                 log_func(f"{prefix}OCR识别失败: {str(e)}")
-            return (False, None)
+            if return_text:
+                return (False, None, None)
+            return (False, None, None)
     
     @staticmethod
     def find_keyword_position(image, keywords: List[str], language: str = "eng") -> Optional[Tuple[int, int]]:
@@ -323,3 +336,69 @@ class NumberRecognizer:
             cache[text.lower()] = number
         
         return number
+    
+    @staticmethod
+    def extract_number(text: str, mode: str = "basic", pattern: str = "") -> Optional[int]:
+        """
+        根据模式从文本中提取数字
+        
+        Args:
+            text: 文本字符串
+            mode: 提取模式
+                - "无规则" / "basic": 基本识别，直接采集识别到的第一个数字
+                - "x/y" / "fraction_x": 识别x/y格式中的x值
+                - "y/x" / "fraction_y": 识别x/y格式中的y值
+                - "自定义" / "custom": 自定义通配符模式
+            pattern: 自定义通配符模式（仅 mode="自定义" 时使用）
+                - 使用 * 表示数字部分
+                - 例如: "HP: */MAX" 表示匹配 "HP: 100/MAX" 并提取 100
+                - 例如: "(*/*)" 表示匹配 "(50/100)" 并提取 50
+        
+        Returns:
+            int: 提取的数字，失败返回None
+        """
+        import re
+        
+        if not text:
+            return None
+        
+        text = text.strip()
+        if not text:
+            return None
+        
+        try:
+            if mode in ("basic", "无规则"):
+                match = re.search(r'-?\d+', text)
+                if match:
+                    return int(match.group())
+            
+            elif mode in ("fraction_x", "x/y"):
+                match = re.search(r'(\d+)\s*/\s*\d+', text)
+                if match:
+                    return int(match.group(1))
+            
+            elif mode in ("fraction_y", "y/x"):
+                match = re.search(r'\d+\s*/\s*(\d+)', text)
+                if match:
+                    return int(match.group(1))
+            
+            elif mode in ("custom", "自定义") and pattern:
+                regex_pattern = ""
+                i = 0
+                while i < len(pattern):
+                    if pattern[i] == '*':
+                        regex_pattern += r'(-?\d+)'
+                    elif pattern[i] in r'\.^$*+?{}[]|()':
+                        regex_pattern += '\\' + pattern[i]
+                    else:
+                        regex_pattern += pattern[i]
+                    i += 1
+                
+                match = re.search(regex_pattern, text)
+                if match:
+                    return int(match.group(1))
+        
+        except Exception:
+            pass
+        
+        return None

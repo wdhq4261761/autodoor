@@ -124,9 +124,11 @@ class CompositeNode(Node):
         self.retry_count = self.config.get("retry_count", 0)
         self.repeat_count = self.config.get("repeat_count", 1)
         self.timeout_ms = self.config.get("timeout_ms", 0)
+        self.child_interval = self.config.get("child_interval", 0)
         self._current_retry = 0
         self._current_repeat = 0
         self._start_time: Optional[float] = None
+        self._last_child_finish_time: Optional[float] = None
     
     def get_children(self) -> List[Node]:
         """获取子节点列表"""
@@ -293,7 +295,7 @@ class ConditionNode(Node):
                 self._current_retry += 1
                 if self._current_retry <= self.retry_count:
                     context.log(f"{self.name}: 重试 {self._current_retry}/{self.retry_count}")
-                    self.reset()
+                    self._reset_for_retry()
                     return NodeStatus.RUNNING
                 
                 self._current_retry = 0
@@ -340,6 +342,14 @@ class ConditionNode(Node):
     def _execute_condition(self, context: "ExecutionContext") -> NodeStatus:
         """子类实现的条件检测逻辑"""
         raise NotImplementedError
+    
+    def _reset_for_retry(self) -> None:
+        """重试时重置状态（保留重试计数器）"""
+        self._status = NodeStatus.SUCCESS
+        self._current_child_index = 0
+        self._condition_done = False
+        for child in self.children:
+            child.reset()
     
     def reset(self) -> None:
         """重置节点状态"""
@@ -541,6 +551,11 @@ class SequenceNode(CompositeNode):
                 self._current_index += 1
                 continue
             
+            if self.child_interval > 0 and self._last_child_finish_time is not None:
+                elapsed = (time.time() * 1000) - self._last_child_finish_time
+                if elapsed < self.child_interval:
+                    return NodeStatus.RUNNING
+            
             status = child.tick(context)
             self._status = status
             
@@ -551,8 +566,11 @@ class SequenceNode(CompositeNode):
                 return NodeStatus.FAILURE
             
             self._current_index += 1
+            if self.child_interval > 0:
+                self._last_child_finish_time = time.time() * 1000
         
         self._current_index = 0
+        self._last_child_finish_time = None
         return NodeStatus.SUCCESS
 
 
@@ -577,6 +595,11 @@ class SelectorNode(CompositeNode):
                 self._current_index += 1
                 continue
             
+            if self.child_interval > 0 and self._last_child_finish_time is not None:
+                elapsed = (time.time() * 1000) - self._last_child_finish_time
+                if elapsed < self.child_interval:
+                    return NodeStatus.RUNNING
+            
             status = child.tick(context)
             self._status = status
             
@@ -584,10 +607,14 @@ class SelectorNode(CompositeNode):
                 return NodeStatus.RUNNING
             
             if status == NodeStatus.SUCCESS:
+                self._last_child_finish_time = None
                 return NodeStatus.SUCCESS
             
             self._current_index += 1
+            if self.child_interval > 0:
+                self._last_child_finish_time = time.time() * 1000
         
+        self._last_child_finish_time = None
         return NodeStatus.FAILURE
 
 

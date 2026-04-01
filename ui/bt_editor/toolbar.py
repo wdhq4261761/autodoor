@@ -189,7 +189,15 @@ class EditorToolbar(ctk.CTkFrame):
     
     def _on_load_click(self):
         """打开"""
+        import os
+        initial_dir = None
+        if hasattr(self.app, 'behavior_tree') and hasattr(self.app.behavior_tree, 'editor'):
+            editor = self.app.behavior_tree.editor
+            if editor.file_path:
+                initial_dir = os.path.dirname(editor.file_path)
+        
         file_path = filedialog.askopenfilename(
+            initialdir=initial_dir,
             title="打开行为树",
             filetypes=[("JSON文件", "*.json"), ("所有文件", "*.*")]
         )

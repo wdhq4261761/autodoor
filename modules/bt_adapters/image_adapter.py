@@ -40,11 +40,16 @@ class ImageConditionNode(ConditionNode):
             return None
     
     def _execute_condition(self, context: "ExecutionContext") -> NodeStatus:
-        region = tuple(self.config.get("region", (0, 0, 100, 100)))
+        region_config = self.config.get("region", (0, 0, 100, 100))
+        region = self._parse_region(region_config)
+        
         template_path = self.config.get("template_path", "")
-        threshold = self.config.get("threshold", 0.8)
+        threshold_percent = self.config.get("threshold", 80)
+        threshold = float(threshold_percent) / 100.0
         save_position = self.config.get("save_position", True)
-        position_key = self.config.get("position_key", "last_image_position")
+        position_key = self.config.get("position_key", "last_detection_position")
+        
+        context.log(f"图像节点 {self.name}: 开始执行, region={region}, template={template_path}, threshold={threshold:.0%}")
         
         try:
             template = self._load_template(template_path)
@@ -72,15 +77,29 @@ class ImageConditionNode(ConditionNode):
                     abs_x = region[0] + position[0]
                     abs_y = region[1] + position[1]
                     context.blackboard.set(position_key, (abs_x, abs_y))
-                context.log(f"图像节点 {self.name}: 匹配成功 ({score:.2%})")
+                context.log(f"图像节点 {self.name}: 匹配成功 ({score:.0%})")
                 return NodeStatus.SUCCESS
             else:
-                context.log(f"图像节点 {self.name}: 未匹配到目标图像")
+                context.log(f"图像节点 {self.name}: 未匹配到目标图像 (最高匹配度: {score:.0%})")
                 return NodeStatus.FAILURE
                 
         except Exception as e:
             context.log(f"图像节点 {self.name}: 执行出错 - {e}")
             return NodeStatus.FAILURE
+    
+    def _parse_region(self, region_config) -> tuple:
+        if region_config is None:
+            return (0, 0, 100, 100)
+        elif isinstance(region_config, (list, tuple)):
+            return tuple(region_config)
+        elif isinstance(region_config, str):
+            try:
+                parts = [int(x.strip()) for x in region_config.split(",")]
+                if len(parts) == 4:
+                    return tuple(parts)
+            except (ValueError, AttributeError):
+                pass
+        return (0, 0, 100, 100)
     
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
@@ -88,7 +107,7 @@ class ImageConditionNode(ConditionNode):
             **self.config,
             "region": list(self.config.get("region", (0, 0, 100, 100))),
             "template_path": self.config.get("template_path", ""),
-            "threshold": self.config.get("threshold", 0.8),
+            "threshold": self.config.get("threshold", 80),
             "save_position": self.config.get("save_position", True),
             "position_key": self.config.get("position_key", "last_image_position"),
         }

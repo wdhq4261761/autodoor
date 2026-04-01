@@ -908,6 +908,13 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
                 self.pan_x = viewport.get("offset_x", 0)
                 self.pan_y = viewport.get("offset_y", 0)
         
+        has_positions = any("position" in node_data for node_data in nodes_data.values())
+        
+        if not has_positions:
+            positions = self._auto_layout(nodes_data, root_id)
+        else:
+            positions = {}
+        
         for node_id, node_data in nodes_data.items():
             node_type = node_data.get("type", "Node")
             config = node_data.get("config", {})
@@ -917,6 +924,8 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
             if "position" in node_data:
                 x = node_data["position"].get("x", 200)
                 y = node_data["position"].get("y", 100)
+            elif node_id in positions:
+                x, y = positions[node_id]
             else:
                 x, y = 200, 100
             
@@ -924,8 +933,13 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         
         for node_id, node_data in nodes_data.items():
             children = node_data.get("children", [])
-            for child_id in children:
-                self.add_connection(node_id, child_id)
+            for child_info in children:
+                if isinstance(child_info, dict):
+                    child_id = child_info.get("id", "")
+                else:
+                    child_id = child_info
+                if child_id:
+                    self.add_connection(node_id, child_id)
         
             if "child" in node_data:
                 self.add_connection(node_id, node_data["child"])
@@ -940,6 +954,50 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
             selected_node = editor_state.get("selected_node")
             if selected_node and selected_node in self.nodes:
                 self._select_node(selected_node)
+    
+    def _auto_layout(self, nodes_data: Dict, root_id: str) -> Dict[str, tuple]:
+        """自动布局节点"""
+        positions = {}
+        node_width = 180
+        node_height = 80
+        h_gap = 50
+        v_gap = 100
+        
+        def get_children(node_id):
+            node_data = nodes_data.get(node_id, {})
+            children = node_data.get("children", [])
+            result = []
+            for child in children:
+                if isinstance(child, dict):
+                    result.append(child.get("id", ""))
+                else:
+                    result.append(child)
+            return [c for c in result if c]
+        
+        def calc_subtree_width(node_id):
+            children = get_children(node_id)
+            if not children:
+                return node_width
+            total = 0
+            for child in children:
+                total += calc_subtree_width(child)
+            return max(total, node_width)
+        
+        def layout_node(node_id, x, y):
+            positions[node_id] = (x, y)
+            children = get_children(node_id)
+            if children:
+                total_width = sum(calc_subtree_width(c) for c in children)
+                current_x = x - total_width / 2
+                for child in children:
+                    child_width = calc_subtree_width(child)
+                    layout_node(child, current_x + child_width / 2, y + node_height + v_gap)
+                    current_x += child_width
+        
+        if root_id:
+            layout_node(root_id, 400, 100)
+        
+        return positions
     
     def _calculate_positions(self, nodes_data: Dict, root_id: str) -> Dict[str, tuple]:
         """计算节点位置"""

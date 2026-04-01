@@ -194,6 +194,19 @@ class InputController:
             return False
     
     @handle_permission_errors
+    def mouse_press(self, button='left', duration=0, priority=0):
+        """鼠标点击（按下并抬起）"""
+        with self.mouse_lock.acquire(priority):
+            if self._impl:
+                self._impl.mouse_down(button)
+                if duration > 0:
+                    import time
+                    time.sleep(duration)
+                self._impl.mouse_up(button)
+                return True
+            return False
+    
+    @handle_permission_errors
     def move_to(self, x, y, priority=0):
         """移动鼠标"""
         with self.mouse_lock.acquire(priority):

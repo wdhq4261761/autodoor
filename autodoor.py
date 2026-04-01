@@ -130,6 +130,9 @@ class AutoDoorOCR:
         self.event_manager = EventManager(self)
         self.config_manager = ConfigManager(self)
         self.permission_manager = PermissionManager(self)
+        
+        from utils.screenshot import ScreenshotManager
+        self.screenshot_manager = ScreenshotManager()
 
     def _init_proxy_classes(self):
         self.ocr = OCRProxy(self)

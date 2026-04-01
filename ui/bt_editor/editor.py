@@ -5,7 +5,7 @@
 """
 
 import customtkinter as ctk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from ui.theme import Theme
@@ -238,7 +238,13 @@ class BehaviorTreeEditor(ctk.CTkFrame):
                 if self._is_modified:
                     return
         
+        import os
+        initial_dir = None
+        if self.file_path:
+            initial_dir = os.path.dirname(self.file_path)
+        
         file_path = filedialog.askopenfilename(
+            initialdir=initial_dir,
             title="打开行为树",
             filetypes=[("JSON文件", "*.json"), ("所有文件", "*.*")]
         )
@@ -247,18 +253,21 @@ class BehaviorTreeEditor(ctk.CTkFrame):
     
     def _on_load(self, file_path: str):
         """加载"""
-        from modules.behavior_tree import BehaviorTreeEngine
+        import json
+        from pathlib import Path
         
-        engine = BehaviorTreeEngine(self.app)
-        if engine.load_from_file(file_path):
-            self.tree_data = engine.get_status()
-            self.canvas.load_tree(self.tree_data)
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                tree_data = json.load(f)
+            
+            self.tree_data = tree_data
+            self.canvas.load_tree(tree_data)
             self.file_path = file_path
             self._is_modified = False
             self.command_manager.clear()
             
             max_counter = 0
-            for node_id in self.tree_data.get("nodes", {}).keys():
+            for node_id in tree_data.get("nodes", {}).keys():
                 if node_id.startswith("node_"):
                     try:
                         num = int(node_id[5:])
@@ -267,11 +276,11 @@ class BehaviorTreeEditor(ctk.CTkFrame):
                         pass
             self._node_counter = max_counter
             
-            self.toolbar.set_status(f"已加载: {self.tree_data.get('name', '未命名')}")
+            self.toolbar.set_status(f"已加载: {tree_data.get('name', '未命名')}")
             self.toolbar.set_file_path(file_path)
             self._update_undo_redo_buttons()
-        else:
-            messagebox.showerror("加载失败", "无法加载行为树文件")
+        except Exception as e:
+            messagebox.showerror("加载失败", f"无法加载行为树文件: {e}")
     
     def _on_save(self):
         """保存"""
@@ -282,7 +291,13 @@ class BehaviorTreeEditor(ctk.CTkFrame):
     
     def _on_save_as(self):
         """另存为"""
+        import os
+        initial_dir = None
+        if self.file_path:
+            initial_dir = os.path.dirname(self.file_path)
+        
         file_path = filedialog.asksaveasfilename(
+            initialdir=initial_dir,
             title="保存行为树",
             defaultextension=".json",
             filetypes=[("JSON文件", "*.json"), ("所有文件", "*.*")]
@@ -303,7 +318,6 @@ class BehaviorTreeEditor(ctk.CTkFrame):
             self.toolbar.set_status("已保存")
             self.toolbar.set_file_path(file_path)
         else:
-            from tkinter import messagebox
             messagebox.showerror("保存失败", "无法保存行为树")
     
     def _on_clear_canvas(self):

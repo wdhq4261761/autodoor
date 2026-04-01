@@ -21,17 +21,19 @@ NODE_CONFIG_SCHEMAS = {
     ],
     "ImageConditionNode": [
         {"key": "region", "label": "检测区域", "type": "region"},
-        {"key": "template_path", "label": "模板路径", "type": "file", "filetypes": [("图像文件", "*.png;*.jpg;*.jpeg;*.bmp"), ("所有文件", "*.*")]},
-        {"key": "threshold", "label": "匹配阈值", "type": "number", "min": 0, "max": 1, "step": 0.1},
+        {"key": "template_path", "label": "模板路径", "type": "file", "width": 120, "filetypes": [("图像文件", "*.png;*.jpg;*.jpeg;*.bmp"), ("所有文件", "*.*")]},
+        {"key": "threshold", "label": "匹配阈值(%)", "type": "number", "min": 0, "max": 100, "default": 80},
     ],
     "ColorConditionNode": [
         {"key": "region", "label": "检测区域", "type": "region"},
         {"key": "target_color", "label": "目标颜色", "type": "color"},
-        {"key": "tolerance", "label": "容差", "type": "number", "min": 0, "max": 100},
+        {"key": "tolerance", "label": "容差", "type": "number", "min": 0, "max": 100, "default": 10},
     ],
     "NumberConditionNode": [
         {"key": "region", "label": "检测区域", "type": "region"},
-        {"key": "compare_mode", "label": "比较模式", "type": "select", "options": ["less_than", "less_equal", "greater_than", "greater_equal", "equal", "not_equal"]},
+        {"key": "extract_mode", "label": "提取模式", "type": "select", "options": ["无规则", "x/y", "自定义"]},
+        {"key": "extract_pattern", "label": "自定义模式", "type": "text"},
+        {"key": "compare_mode", "label": "比较模式", "type": "select", "options": ["<", "<=", ">", ">=", "==", "!="]},
         {"key": "threshold", "label": "比较值", "type": "number"},
     ],
     "VariableConditionNode": [
@@ -46,12 +48,14 @@ NODE_CONFIG_SCHEMAS = {
     ],
     "MouseClickNode": [
         {"key": "button", "label": "按钮", "type": "select", "options": ["left", "right", "middle"]},
+        {"key": "action", "label": "动作", "type": "select", "options": ["press", "down", "up"]},
+        {"key": "duration", "label": "按住时长(ms)", "type": "number"},
         {"key": "position", "label": "位置", "type": "position"},
-        {"key": "use_blackboard", "label": "使用黑板位置", "type": "bool"},
+        {"key": "use_blackboard", "label": "点击最近检测点", "type": "bool"},
     ],
     "MouseMoveNode": [
         {"key": "position", "label": "位置", "type": "position"},
-        {"key": "use_blackboard", "label": "使用黑板位置", "type": "bool"},
+        {"key": "use_blackboard", "label": "移动到最近检测点", "type": "bool"},
         {"key": "position_key", "label": "黑板变量名", "type": "text"},
         {"key": "relative", "label": "相对移动", "type": "bool"},
     ],
@@ -64,15 +68,21 @@ NODE_CONFIG_SCHEMAS = {
         {"key": "value", "label": "值", "type": "text"},
     ],
     "ScriptNode": [
-        {"key": "script_path", "label": "脚本路径", "type": "file", "filetypes": [("脚本文件", "*.txt"), ("所有文件", "*.*")]},
+        {"key": "script_path", "label": "脚本路径", "type": "file", "width": 120, "filetypes": [("脚本文件", "*.txt"), ("所有文件", "*.*")]},
         {"key": "loop", "label": "循环执行", "type": "bool"},
     ],
     "CodeNode": [
-        {"key": "code_path", "label": "代码路径", "type": "file", "filetypes": [("Python脚本", "*.py"), ("批处理", "*.bat;*.cmd"), ("PowerShell", "*.ps1"), ("所有文件", "*.*")]},
+        {"key": "code_path", "label": "代码路径", "type": "file", "width": 120, "filetypes": [("所有文件", "*.*"), ("Python脚本", "*.py"), ("批处理", "*.bat;*.cmd"), ("PowerShell", "*.ps1")]},
         {"key": "code_type", "label": "代码类型", "type": "select", "options": ["auto", "python", "batch", "powershell"]},
     ],
     "ParallelNode": [
         {"key": "success_policy", "label": "成功策略", "type": "select", "options": ["require_all", "require_one"]},
+    ],
+    "SequenceNode": [
+        {"key": "child_interval", "label": "子节点间隔(ms)", "type": "number", "min": 0},
+    ],
+    "SelectorNode": [
+        {"key": "child_interval", "label": "子节点间隔(ms)", "type": "number", "min": 0},
     ],
 }
 
@@ -164,10 +174,11 @@ class NumberField(FieldWidget):
     """数字字段"""
     
     def __init__(self, master, label: str, key: str, on_change: Callable, 
-                 min_val: float = None, max_val: float = None, step: float = 1, **kwargs):
+                 min_val: float = None, max_val: float = None, step: float = 1, default: float = None, **kwargs):
         self.min_val = min_val
         self.max_val = max_val
         self.step = step
+        self.default = default
         super().__init__(master, label, key, on_change, **kwargs)
         self._create_widget()
     
@@ -198,13 +209,18 @@ class NumberField(FieldWidget):
             pass
     
     def set_value(self, value: Any):
-        self.var.set(str(value if value is not None else (self.min_val or 0)))
+        if value is not None:
+            self.var.set(str(value))
+        elif self.default is not None:
+            self.var.set(str(self.default))
+        else:
+            self.var.set(str(self.min_val or 0))
     
     def get_value(self) -> Any:
         try:
             return float(self.var.get()) if "." in self.var.get() else int(self.var.get())
         except ValueError:
-            return 0
+            return self.default if self.default is not None else 0
 
 
 class SelectField(FieldWidget):
@@ -287,13 +303,14 @@ class RegionField(FieldWidget):
             textvariable=self.var,
             font=Theme.get_font('sm'),
             height=Theme.DIMENSIONS['input_height'],
+            width=120,
             fg_color=self._dark_colors['bg_tertiary'],
             border_color=self._dark_colors['border'],
             text_color=self._dark_colors['text_primary'],
             corner_radius=Theme.DIMENSIONS['button_corner_radius'],
             state="disabled"
         )
-        self.entry.pack(side="left", fill="x", expand=True, padx=(0, Theme.DIMENSIONS['spacing_xs']))
+        self.entry.pack(side="left", padx=(0, Theme.DIMENSIONS['spacing_xs']))
         
         self.btn = ctk.CTkButton(
             input_frame,
@@ -398,9 +415,11 @@ class FileField(FieldWidget):
     """文件选择字段"""
     
     def __init__(self, master, label: str, key: str, on_change: Callable, 
-                 filetypes: List[tuple] = None, **kwargs):
+                 filetypes: List[tuple] = None, app=None, width: int = None, **kwargs):
         self.filetypes = filetypes or [("所有文件", "*.*")]
         self.full_path = ""
+        self.app = app
+        self._width = width
         super().__init__(master, label, key, on_change, **kwargs)
         self._create_widget()
     
@@ -410,17 +429,20 @@ class FileField(FieldWidget):
         
         self.var = tk.StringVar(value="")
         
-        self.entry = ctk.CTkEntry(
-            input_frame,
-            textvariable=self.var,
-            font=Theme.get_font('sm'),
-            height=Theme.DIMENSIONS['input_height'],
-            fg_color=self._dark_colors['bg_tertiary'],
-            border_color=self._dark_colors['border'],
-            text_color=self._dark_colors['text_primary'],
-            corner_radius=Theme.DIMENSIONS['button_corner_radius'],
-            state="disabled"
-        )
+        entry_kwargs = {
+            "textvariable": self.var,
+            "font": Theme.get_font('sm'),
+            "height": Theme.DIMENSIONS['input_height'],
+            "fg_color": self._dark_colors['bg_tertiary'],
+            "border_color": self._dark_colors['border'],
+            "text_color": self._dark_colors['text_primary'],
+            "corner_radius": Theme.DIMENSIONS['button_corner_radius'],
+            "state": "disabled"
+        }
+        if self._width:
+            entry_kwargs["width"] = self._width
+        
+        self.entry = ctk.CTkEntry(input_frame, **entry_kwargs)
         self.entry.pack(side="left", fill="x", expand=True, padx=(0, Theme.DIMENSIONS['spacing_xs']))
         
         self.btn = ctk.CTkButton(
@@ -437,7 +459,17 @@ class FileField(FieldWidget):
         self.btn.pack(side="right")
     
     def _browse(self):
+        import os
+        initial_dir = None
+        if self.full_path:
+            initial_dir = os.path.dirname(self.full_path)
+        elif self.app and hasattr(self.app, 'behavior_tree') and hasattr(self.app.behavior_tree, 'editor'):
+            editor = self.app.behavior_tree.editor
+            if editor.file_path:
+                initial_dir = os.path.dirname(editor.file_path)
+        
         file_path = filedialog.askopenfilename(
+            initialdir=initial_dir,
             title="选择文件",
             filetypes=self.filetypes
         )
@@ -696,6 +728,7 @@ class ColorField(FieldWidget):
         input_frame.pack(fill="x")
         
         self.var = tk.StringVar(value="未选择")
+        self._rgb_value = None
         
         self.preview = ctk.CTkFrame(
             input_frame,
@@ -711,13 +744,14 @@ class ColorField(FieldWidget):
             textvariable=self.var,
             font=Theme.get_font('sm'),
             height=Theme.DIMENSIONS['input_height'],
+            width=100,
             fg_color=self._dark_colors['bg_tertiary'],
             border_color=self._dark_colors['border'],
             text_color=self._dark_colors['text_primary'],
             corner_radius=Theme.DIMENSIONS['button_corner_radius'],
             state="disabled"
         )
-        self.entry.pack(side="left", fill="x", expand=True, padx=(0, Theme.DIMENSIONS['spacing_xs']))
+        self.entry.pack(side="left", padx=(0, Theme.DIMENSIONS['spacing_xs']))
         
         self.btn = ctk.CTkButton(
             input_frame,
@@ -739,6 +773,7 @@ class ColorField(FieldWidget):
             r, g, b = rgb
             self.var.set(f"RGB({r}, {g}, {b})")
             self._current_color = f"#{r:02x}{g:02x}{b:02x}"
+            self._rgb_value = list(rgb)
             self.preview.configure(fg_color=self._current_color)
             self.on_change(self.key, list(rgb))
         
@@ -746,15 +781,17 @@ class ColorField(FieldWidget):
     
     def set_value(self, value: Any):
         if isinstance(value, (list, tuple)) and len(value) >= 3:
-            r, g, b = value[0], value[1], value[2]
+            r, g, b = int(value[0]), int(value[1]), int(value[2])
             self.var.set(f"RGB({r}, {g}, {b})")
             self._current_color = f"#{r:02x}{g:02x}{b:02x}"
+            self._rgb_value = [r, g, b]
             self.preview.configure(fg_color=self._current_color)
         else:
             self.var.set(str(value or "未选择"))
+            self._rgb_value = None
     
     def get_value(self) -> Any:
-        return self.var.get()
+        return self._rgb_value
 
 
 class PropertyPanel(ctk.CTkFrame):
@@ -777,6 +814,40 @@ class PropertyPanel(ctk.CTkFrame):
         )
         
         self._create_ui()
+        self._bind_click_event()
+    
+    def _bind_click_event(self):
+        """绑定点击事件，点击面板时让输入框失去焦点并保存"""
+        def on_click(event):
+            focused = self.focus_get()
+            if focused:
+                widget_type = str(type(focused).__name__)
+                if widget_type in ("CTkEntry", "Entry"):
+                    self.focus_set()
+        
+        self.bind("<Button-1>", on_click)
+        self.header_frame.bind("<Button-1>", on_click)
+        self.title_label.bind("<Button-1>", on_click)
+        self.node_type_label.bind("<Button-1>", on_click)
+        self.separator.bind("<Button-1>", on_click)
+        self.content_frame.bind("<Button-1>", on_click)
+    
+    def force_save_current_field(self):
+        """强制保存当前焦点控件的值"""
+        focused = self.focus_get()
+        if focused:
+            for key, widget in self.widgets.items():
+                if hasattr(widget, 'entry') and widget.entry == focused:
+                    if hasattr(widget, 'on_change') and hasattr(widget, 'var'):
+                        widget.on_change(widget.key, widget.var.get())
+                    break
+                elif hasattr(widget, 'var') and hasattr(widget, 'entry'):
+                    try:
+                        if widget.entry == focused:
+                            widget.on_change(widget.key, widget.var.get())
+                            break
+                    except:
+                        pass
     
     def _create_ui(self):
         """创建UI"""
@@ -980,7 +1051,8 @@ class PropertyPanel(ctk.CTkFrame):
         elif field_type == "number":
             field_widget = NumberField(
                 self.content_frame, label, key, self._on_field_change,
-                min_val=field.get("min"), max_val=field.get("max"), step=field.get("step", 1)
+                min_val=field.get("min"), max_val=field.get("max"), step=field.get("step", 1),
+                default=field.get("default")
             )
         elif field_type == "select":
             field_widget = SelectField(
@@ -994,7 +1066,9 @@ class PropertyPanel(ctk.CTkFrame):
         elif field_type == "file":
             field_widget = FileField(
                 self.content_frame, label, key, self._on_field_change,
-                filetypes=field.get("filetypes", [("所有文件", "*.*")])
+                filetypes=field.get("filetypes", [("所有文件", "*.*")]),
+                app=self.app,
+                width=field.get("width")
             )
         elif field_type == "key":
             field_widget = KeyField(self.content_frame, label, key, self._on_field_change)

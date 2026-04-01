@@ -147,11 +147,19 @@ class ExecutionContext:
             PIL.Image 截图图像
         """
         if self.screenshot_manager is None:
+            self.log("截图失败: screenshot_manager 未初始化", "error")
             return None
         
         if region:
-            return self.screenshot_manager.get_region_screenshot(region)
-        return self.screenshot_manager.get_full_screenshot()
+            result = self.screenshot_manager.get_region_screenshot(region)
+            if result is None:
+                self.log(f"截图失败: 区域截图返回 None, region={region}", "error")
+            return result
+        
+        result = self.screenshot_manager.get_full_screenshot()
+        if result is None:
+            self.log("截图失败: 全屏截图返回 None", "error")
+        return result
     
     def execute_key_press(self, key: str, action: str = "press", duration: int = 0) -> bool:
         """
@@ -180,13 +188,16 @@ class ExecutionContext:
             self.log(f"按键执行失败: {e}", "error")
             return False
     
-    def execute_mouse_click(self, button: str = "left", position: Optional[tuple] = None) -> bool:
+    def execute_mouse_click(self, button: str = "left", action: str = "press", 
+                            position: Optional[tuple] = None, duration: int = 0) -> bool:
         """
         执行鼠标点击
         
         Args:
             button: 鼠标按钮 (left/right/middle)
+            action: 动作类型 (press/down/up)
             position: 点击位置 (x, y)
+            duration: 按住时长（毫秒）
             
         Returns:
             是否执行成功
@@ -196,7 +207,14 @@ class ExecutionContext:
         
         try:
             if position:
-                self.input_controller.click(position[0], position[1])
+                self.input_controller.move_to(position[0], position[1])
+            
+            if action == "press":
+                self.input_controller.mouse_press(button, duration/1000.0 if duration > 0 else 0)
+            elif action == "down":
+                self.input_controller.mouse_down(button)
+            elif action == "up":
+                self.input_controller.mouse_up(button)
             return True
         except Exception as e:
             self.log(f"鼠标点击失败: {e}", "error")

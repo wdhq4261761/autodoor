@@ -69,9 +69,11 @@ class MouseClickNode(ActionNode):
     
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
         button = self.config.get("button", "left")
+        action = self.config.get("action", "press")
+        duration = self.config.get("duration", 0)
         position = self.config.get("position")
         use_blackboard = self.config.get("use_blackboard", False)
-        position_key = self.config.get("position_key", "last_ocr_position")
+        position_key = self.config.get("position_key", "last_detection_position")
         
         try:
             click_position = position
@@ -79,11 +81,12 @@ class MouseClickNode(ActionNode):
             if use_blackboard:
                 click_position = context.blackboard.get(position_key)
             
-            success = context.execute_mouse_click(button, click_position)
+            success = context.execute_mouse_click(button, action, click_position, duration)
             
             if success:
                 pos_str = click_position if click_position else "当前位置"
-                context.log(f"鼠标节点 {self.name}: 执行点击 {button} @ {pos_str}")
+                action_str = {"press": "点击", "down": "按下", "up": "抬起"}.get(action, action)
+                context.log(f"鼠标节点 {self.name}: {action_str} {button} @ {pos_str}")
                 return NodeStatus.SUCCESS
             else:
                 context.log(f"鼠标节点 {self.name}: 点击执行失败")
@@ -98,9 +101,11 @@ class MouseClickNode(ActionNode):
         data["config"] = {
             **self.config,
             "button": self.config.get("button", "left"),
+            "action": self.config.get("action", "press"),
+            "duration": self.config.get("duration", 0),
             "position": self.config.get("position"),
             "use_blackboard": self.config.get("use_blackboard", False),
-            "position_key": self.config.get("position_key", "last_ocr_position"),
+            "position_key": self.config.get("position_key", "last_detection_position"),
         }
         return data
 
@@ -272,10 +277,15 @@ class CodeNode(ActionNode):
     代码动作节点
     
     执行外部代码文件（Python/Batch/PowerShell）
+    非阻塞模式：每次tick检查进程是否完成
     """
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
+        self._process: Optional[Any] = None
+        self._code_started = False
+        self._stdout_buffer = ""
+        self._stderr_buffer = ""
     
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
         code_path = self.config.get("code_path", "")
@@ -289,40 +299,134 @@ class CodeNode(ActionNode):
         try:
             import subprocess
             from pathlib import Path
+            import select
             
-            code_file = Path(code_path)
-            if not code_file.exists():
-                context.log(f"代码节点 {self.name}: 代码文件不存在 {code_path}")
-                return NodeStatus.FAILURE
-            
-            if code_type == "auto":
-                if code_file.suffix == ".py":
-                    cmd = ["python", str(code_file)] + args
-                elif code_file.suffix in [".bat", ".cmd"]:
-                    cmd = [str(code_file)] + args
-                elif code_file.suffix == ".ps1":
-                    cmd = ["powershell", "-File", str(code_file)] + args
+            if not self._code_started:
+                code_file = Path(code_path)
+                if not code_file.exists():
+                    context.log(f"代码节点 {self.name}: 代码文件不存在 {code_path}")
+                    return NodeStatus.FAILURE
+                
+                if code_type == "auto":
+                    if code_file.suffix == ".py":
+                        cmd = ["python", "-u", str(code_file)] + args
+                    elif code_file.suffix in [".bat", ".cmd"]:
+                        cmd = [str(code_file)] + args
+                    elif code_file.suffix == ".ps1":
+                        cmd = ["powershell", "-File", str(code_file)] + args
+                    else:
+                        cmd = [str(code_file)] + args
                 else:
                     cmd = [str(code_file)] + args
-            else:
-                cmd = [str(code_file)] + args
+                
+                context.log(f"代码节点 {self.name}: 启动代码 {code_path}")
+                context.log(f"代码节点 {self.name}: 命令: {' '.join(cmd)}")
+                self._process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True
+                )
+                self._code_started = True
+                self._stdout_buffer = ""
+                self._stderr_buffer = ""
+                return NodeStatus.RUNNING
             
-            context.log(f"代码节点 {self.name}: 执行代码 {code_path}")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            if self._process is None:
+                return NodeStatus.FAILURE
             
-            if result.returncode == 0:
-                context.log(f"代码节点 {self.name}: 执行成功")
+            if not context.check_running():
+                self._process.terminate()
+                self._process = None
+                self._code_started = False
+                return NodeStatus.ABORTED
+            
+            import threading
+            import queue
+            
+            def read_output(pipe, queue_out):
+                try:
+                    for line in iter(pipe.readline, ''):
+                        if line:
+                            queue_out.put(line)
+                finally:
+                    pipe.close()
+            
+            if not hasattr(self, '_stdout_queue'):
+                self._stdout_queue = queue.Queue()
+                self._stderr_queue = queue.Queue()
+                self._stdout_thread = threading.Thread(target=read_output, args=(self._process.stdout, self._stdout_queue), daemon=True)
+                self._stderr_thread = threading.Thread(target=read_output, args=(self._process.stderr, self._stderr_queue), daemon=True)
+                self._stdout_thread.start()
+                self._stderr_thread.start()
+            
+            while not self._stdout_queue.empty():
+                try:
+                    line = self._stdout_queue.get_nowait()
+                    context.log(f"[stdout] {line.rstrip()}")
+                except queue.Empty:
+                    break
+            
+            while not self._stderr_queue.empty():
+                try:
+                    line = self._stderr_queue.get_nowait()
+                    context.log(f"[stderr] {line.rstrip()}")
+                except queue.Empty:
+                    break
+            
+            poll_result = self._process.poll()
+            if poll_result is None:
+                return NodeStatus.RUNNING
+            
+            while not self._stdout_queue.empty():
+                try:
+                    line = self._stdout_queue.get_nowait()
+                    context.log(f"[stdout] {line.rstrip()}")
+                except queue.Empty:
+                    break
+            
+            while not self._stderr_queue.empty():
+                try:
+                    line = self._stderr_queue.get_nowait()
+                    context.log(f"[stderr] {line.rstrip()}")
+                except queue.Empty:
+                    break
+            
+            self._process = None
+            self._code_started = False
+            if hasattr(self, '_stdout_queue'):
+                delattr(self, '_stdout_queue')
+                delattr(self, '_stderr_queue')
+            
+            if poll_result == 0:
+                context.log(f"代码节点 {self.name}: 执行成功 (退出码: 0)")
                 return NodeStatus.SUCCESS
             else:
-                context.log(f"代码节点 {self.name}: 执行失败 - {result.stderr}")
+                context.log(f"代码节点 {self.name}: 执行失败 (退出码: {poll_result})")
                 return NodeStatus.FAILURE
                 
-        except subprocess.TimeoutExpired:
-            context.log(f"代码节点 {self.name}: 执行超时")
-            return NodeStatus.FAILURE
         except Exception as e:
             context.log(f"代码节点 {self.name}: 执行出错 - {e}")
+            self._process = None
+            self._code_started = False
             return NodeStatus.FAILURE
+    
+    def reset(self) -> None:
+        super().reset()
+        if self._process is not None:
+            try:
+                self._process.terminate()
+            except:
+                pass
+        self._process = None
+        self._code_started = False
+        self._stdout_buffer = ""
+        self._stderr_buffer = ""
+        if hasattr(self, '_stdout_queue'):
+            delattr(self, '_stdout_queue')
+            delattr(self, '_stderr_queue')
     
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()

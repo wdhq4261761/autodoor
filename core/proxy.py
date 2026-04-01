@@ -370,6 +370,9 @@ class BehaviorTreeProxy:
             )
         
         if self.editor:
+            if hasattr(self.editor, 'property_panel'):
+                self.editor.property_panel.force_save_current_field()
+            
             tree_data = self.editor.get_tree_data()
             if not tree_data.get("root_node"):
                 return False

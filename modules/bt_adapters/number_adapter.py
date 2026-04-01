@@ -23,11 +23,15 @@ class NumberConditionNode(ConditionNode):
         super().__init__(node_id, config)
     
     def _execute_condition(self, context: "ExecutionContext") -> NodeStatus:
-        region = tuple(self.config.get("region", (0, 0, 100, 100)))
-        compare_mode = self.config.get("compare_mode", "less_than")
+        region_config = self.config.get("region", (0, 0, 100, 100))
+        region = self._parse_region(region_config)
+        
+        compare_mode = self._parse_compare_mode(self.config.get("compare_mode", "<"))
         threshold = self.config.get("threshold", 0)
         save_value = self.config.get("save_value", True)
         value_key = self.config.get("value_key", "last_number_value")
+        extract_mode = self.config.get("extract_mode", "无规则")
+        extract_pattern = self.config.get("extract_pattern", "")
         
         try:
             screenshot = context.get_screenshot(region)
@@ -36,18 +40,25 @@ class NumberConditionNode(ConditionNode):
                 context.log(f"数字节点 {self.name}: 截图失败")
                 return NodeStatus.FAILURE
             
+            processed_image = self._preprocess_image(screenshot)
+            if processed_image is None:
+                context.log(f"数字节点 {self.name}: 图像预处理失败")
+                return NodeStatus.FAILURE
+            
             from utils.recognition import NumberRecognizer
             
-            text = NumberRecognizer.recognize(screenshot)
+            text = NumberRecognizer.recognize(processed_image)
             
             if text is None:
                 context.log(f"数字节点 {self.name}: OCR识别失败")
                 return NodeStatus.FAILURE
             
-            number = NumberRecognizer.parse_number(text)
+            context.log(f"数字节点 {self.name}: 识别结果 '{text.strip()}'")
+            
+            number = NumberRecognizer.extract_number(text, extract_mode, extract_pattern)
             
             if number is None:
-                context.log(f"数字节点 {self.name}: 无法解析数字 '{text}'")
+                context.log(f"数字节点 {self.name}: 无法解析数字 '{text.strip()}'")
                 return NodeStatus.FAILURE
             
             if save_value:
@@ -65,6 +76,57 @@ class NumberConditionNode(ConditionNode):
         except Exception as e:
             context.log(f"数字节点 {self.name}: 执行出错 - {e}")
             return NodeStatus.FAILURE
+    
+    def _preprocess_image(self, image):
+        """
+        图像预处理 - 与原项目数字识别模块保持一致
+        
+        Args:
+            image: PIL.Image 原始图像
+            
+        Returns:
+            PIL.Image: 处理后的图像
+        """
+        try:
+            from PIL import ImageEnhance, ImageFilter
+            
+            image = image.convert('L')
+            
+            enhancer = ImageEnhance.Contrast(image)
+            image = enhancer.enhance(1.5)
+            
+            image = image.filter(ImageFilter.SHARPEN)
+            
+            image = image.point(lambda p: p > 128 and 255)
+            
+            return image
+        except Exception as e:
+            return None
+    
+    def _parse_region(self, region_config) -> tuple:
+        if region_config is None:
+            return (0, 0, 100, 100)
+        elif isinstance(region_config, (list, tuple)):
+            return tuple(region_config)
+        elif isinstance(region_config, str):
+            try:
+                parts = [int(x.strip()) for x in region_config.split(",")]
+                if len(parts) == 4:
+                    return tuple(parts)
+            except (ValueError, AttributeError):
+                pass
+        return (0, 0, 100, 100)
+    
+    def _parse_compare_mode(self, mode: str) -> str:
+        mode_map = {
+            "<": "less_than",
+            "<=": "less_equal",
+            ">": "greater_than",
+            ">=": "greater_equal",
+            "==": "equal",
+            "!=": "not_equal",
+        }
+        return mode_map.get(mode, mode)
     
     def _compare(self, value: int, threshold: int, mode: str) -> bool:
         if mode == "less_than":
@@ -90,5 +152,7 @@ class NumberConditionNode(ConditionNode):
             "threshold": self.config.get("threshold", 0),
             "save_value": self.config.get("save_value", True),
             "value_key": self.config.get("value_key", "last_number_value"),
+            "extract_mode": self.config.get("extract_mode", "无规则"),
+            "extract_pattern": self.config.get("extract_pattern", ""),
         }
         return data
