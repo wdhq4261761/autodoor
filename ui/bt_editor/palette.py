@@ -38,6 +38,7 @@ NODE_CATEGORIES = {
             ("KeyPressNode", "按键", "模拟键盘按键"),
             ("MouseClickNode", "点击", "模拟鼠标点击"),
             ("MouseMoveNode", "移动", "移动鼠标位置"),
+            ("MouseScrollNode", "滚轮", "鼠标滚轮滚动"),
             ("DelayNode", "延时", "等待指定时间"),
             ("SetVariableNode", "设变量", "设置变量值"),
             ("CodeNode", "代码", "执行外部代码文件"),

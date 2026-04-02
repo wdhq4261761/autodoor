@@ -24,7 +24,7 @@ def register_adapters() -> None:
         from modules.bt_adapters.number_adapter import NumberConditionNode
         from modules.bt_adapters.variable_adapter import VariableConditionNode
         from modules.bt_adapters.action_adapters import (
-            KeyPressNode, MouseClickNode, MouseMoveNode,
+            KeyPressNode, MouseClickNode, MouseMoveNode, MouseScrollNode,
             DelayNode, SetVariableNode, ScriptNode, CodeNode
         )
         

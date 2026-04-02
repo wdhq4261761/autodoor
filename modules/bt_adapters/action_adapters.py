@@ -74,6 +74,8 @@ class MouseClickNode(ActionNode):
         position = self.config.get("position")
         use_blackboard = self.config.get("use_blackboard", False)
         position_key = self.config.get("position_key", "last_detection_position")
+        click_count = self.config.get("click_count", 1)
+        click_interval = self.config.get("click_interval", 100)
         
         try:
             click_position = position
@@ -81,16 +83,34 @@ class MouseClickNode(ActionNode):
             if use_blackboard:
                 click_position = context.blackboard.get(position_key)
             
-            success = context.execute_mouse_click(button, action, click_position, duration)
-            
-            if success:
+            if click_count > 1:
+                for i in range(click_count):
+                    if not context.check_running():
+                        return NodeStatus.ABORTED
+                    
+                    success = context.execute_mouse_click(button, action, click_position, duration)
+                    
+                    if not success:
+                        context.log(f"鼠标节点 {self.name}: 第{i+1}次点击执行失败")
+                        return NodeStatus.FAILURE
+                    
+                    if i < click_count - 1:
+                        time.sleep(click_interval / 1000.0)
+                
                 pos_str = click_position if click_position else "当前位置"
-                action_str = {"press": "点击", "down": "按下", "up": "抬起"}.get(action, action)
-                context.log(f"鼠标节点 {self.name}: {action_str} {button} @ {pos_str}")
+                context.log(f"鼠标节点 {self.name}: {click_count}击 {button} @ {pos_str}")
                 return NodeStatus.SUCCESS
             else:
-                context.log(f"鼠标节点 {self.name}: 点击执行失败")
-                return NodeStatus.FAILURE
+                success = context.execute_mouse_click(button, action, click_position, duration)
+                
+                if success:
+                    pos_str = click_position if click_position else "当前位置"
+                    action_str = {"press": "点击", "down": "按下", "up": "抬起"}.get(action, action)
+                    context.log(f"鼠标节点 {self.name}: {action_str} {button} @ {pos_str}")
+                    return NodeStatus.SUCCESS
+                else:
+                    context.log(f"鼠标节点 {self.name}: 点击执行失败")
+                    return NodeStatus.FAILURE
                 
         except Exception as e:
             context.log(f"鼠标节点 {self.name}: 执行出错 - {e}")
@@ -106,6 +126,8 @@ class MouseClickNode(ActionNode):
             "position": self.config.get("position"),
             "use_blackboard": self.config.get("use_blackboard", False),
             "position_key": self.config.get("position_key", "last_detection_position"),
+            "click_count": self.config.get("click_count", 1),
+            "click_interval": self.config.get("click_interval", 100),
         }
         return data
 
@@ -114,7 +136,7 @@ class MouseMoveNode(ActionNode):
     """
     鼠标移动动作节点
     
-    移动鼠标到指定位置
+    移动鼠标到指定位置，支持拖拽操作
     """
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
@@ -126,6 +148,12 @@ class MouseMoveNode(ActionNode):
         position_key = self.config.get("position_key", "last_ocr_position")
         relative = self.config.get("relative", False)
         smooth = self.config.get("smooth", True)
+        move_type = self.config.get("move_type", "移动")
+        drag_button = self.config.get("drag_button", "left")
+        end_position = self.config.get("end_position")
+        use_blackboard_end = self.config.get("use_blackboard_end", False)
+        position_key_end = self.config.get("position_key_end", "")
+        drag_duration = self.config.get("drag_duration", 0)
         
         try:
             move_position = position
@@ -141,16 +169,58 @@ class MouseMoveNode(ActionNode):
                 context.log(f"鼠标移动节点 {self.name}: 输入控制器不可用")
                 return NodeStatus.FAILURE
             
-            if relative:
-                context.input_controller.move_relative(move_position[0], move_position[1])
-            else:
-                context.input_controller.move_to(move_position[0], move_position[1])
             
-            context.log(f"鼠标移动节点 {self.name}: 移动到 {move_position}")
-            return NodeStatus.SUCCESS
+            if move_type == "拖拽":
+                drag_end_position = end_position
+                
+                if use_blackboard_end:
+                    drag_end_position = context.blackboard.get(position_key_end)
+                
+                if not drag_end_position:
+                    context.log(f"鼠标移动节点 {self.name}: 未指定拖拽终点")
+                    return NodeStatus.FAILURE
+                
+                
+                context.input_controller.move_to(move_position[0], move_position[1])
+                context.input_controller.mouse_down(drag_button)
+                
+                if drag_duration > 0:
+                    steps = max(10, drag_duration // 50)
+                    dx = (drag_end_position[0] - move_position[0]) / steps
+                    dy = (drag_end_position[1] - move_position[1]) / steps
+                    
+                    for i in range(steps):
+                        if not context.check_running():
+                            context.input_controller.mouse_up(drag_button)
+                            return NodeStatus.ABORTED
+                        
+                        
+                        current_x = int(move_position[0] + dx * (i + 1))
+                        current_y = int(move_position[1] + dy * (i + 1))
+                        context.input_controller.move_to(current_x, current_y)
+                        time.sleep(drag_duration / 1000.0 / steps)
+                else:
+                    context.input_controller.move_to(drag_end_position[0], drag_end_position[1])
+                
+                context.input_controller.mouse_up(drag_button)
+                
+                context.log(f"鼠标移动节点 {self.name}: 从 {move_position} 拖拽到 {drag_end_position}")
+                return NodeStatus.SUCCESS
+            else:
+                if relative:
+                    context.input_controller.move_relative(move_position[0], move_position[1])
+                else:
+                    context.input_controller.move_to(move_position[0], move_position[1])
+                
+                context.log(f"鼠标移动节点 {self.name}: 移动到 {move_position}")
+                return NodeStatus.SUCCESS
                 
         except Exception as e:
             context.log(f"鼠标移动节点 {self.name}: 执行出错 - {e}")
+            try:
+                context.input_controller.mouse_up(drag_button)
+            except:
+                pass
             return NodeStatus.FAILURE
     
     def to_dict(self) -> Dict[str, Any]:
@@ -162,6 +232,58 @@ class MouseMoveNode(ActionNode):
             "position_key": self.config.get("position_key", "last_ocr_position"),
             "relative": self.config.get("relative", False),
             "smooth": self.config.get("smooth", True),
+            "move_type": self.config.get("move_type", "移动"),
+            "drag_button": self.config.get("drag_button", "left"),
+            "end_position": self.config.get("end_position"),
+            "use_blackboard_end": self.config.get("use_blackboard_end", False),
+            "position_key_end": self.config.get("position_key_end", ""),
+            "drag_duration": self.config.get("drag_duration", 0),
+        }
+        return data
+
+
+class MouseScrollNode(ActionNode):
+    """
+    鼠标滚轮动作节点
+    
+    执行鼠标滚轮滚动操作
+    """
+    
+    def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
+        super().__init__(node_id, config)
+    
+    def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
+        clicks = self.config.get("clicks", 1)
+        direction = self.config.get("direction", "垂直")
+        speed = self.config.get("scroll_speed", "正常")
+        
+        try:
+            success = context.execute_mouse_scroll(clicks, direction, speed)
+            
+            if success:
+                dir_str = "水平" if direction == "水平" else "垂直"
+                if direction == "水平":
+                    direction_str = "向右" if clicks > 0 else "向左"
+                else:
+                    direction_str = "向上" if clicks > 0 else "向下"
+                
+                context.log(f"鼠标滚轮节点 {self.name}: {dir_str}{direction_str}滚动 {abs(clicks)} 次")
+                return NodeStatus.SUCCESS
+            else:
+                context.log(f"鼠标滚轮节点 {self.name}: 滚轮执行失败")
+                return NodeStatus.FAILURE
+                
+        except Exception as e:
+            context.log(f"鼠标滚轮节点 {self.name}: 执行出错 - {e}")
+            return NodeStatus.FAILURE
+    
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data["config"] = {
+            **self.config,
+            "clicks": self.config.get("clicks", 1),
+            "direction": self.config.get("direction", "垂直"),
+            "scroll_speed": self.config.get("scroll_speed", "正常"),
         }
         return data
 

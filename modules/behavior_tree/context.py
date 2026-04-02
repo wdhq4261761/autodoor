@@ -220,6 +220,70 @@ class ExecutionContext:
             self.log(f"鼠标点击失败: {e}", "error")
             return False
     
+    def execute_mouse_scroll(self, clicks: int, direction: str = "垂直", speed: str = "正常") -> bool:
+        """
+        执行鼠标滚轮操作
+        
+        Args:
+            clicks: 滚动次数，正数向上/右，负数向下/左
+            direction: 滚动方向 (垂直/水平)
+            speed: 滚动速度 (慢速/正常/快速)
+            
+        Returns:
+            是否执行成功
+        """
+        if self.input_controller is None:
+            return False
+        
+        try:
+            speed_map = {
+                "慢速": 0.1,
+                "正常": 0.05,
+                "快速": 0.01
+            }
+            
+            interval = speed_map.get(speed, 0.05)
+            abs_clicks = abs(clicks)
+            
+            for i in range(abs_clicks):
+                if not self.check_running():
+                    return False
+                
+                if direction == "水平":
+                    if clicks > 0:
+                        self.input_controller.scroll(1)
+                    else:
+                        self.input_controller.scroll(-1)
+                else:
+                    if clicks > 0:
+                        self.input_controller.scroll(1)
+                    else:
+                        self.input_controller.scroll(-1)
+                
+                if i < abs_clicks - 1:
+                    time.sleep(interval)
+            
+            return True
+        except Exception as e:
+            self.log(f"鼠标滚轮失败: {e}", "error")
+            return False
+    
+    def get_mouse_position(self) -> Optional[tuple]:
+        """
+        获取当前鼠标位置
+        
+        Returns:
+            鼠标位置 (x, y) 或 None
+        """
+        if self.input_controller is None:
+            return None
+        
+        try:
+            return self.input_controller.get_position()
+        except Exception as e:
+            self.log(f"获取鼠标位置失败: {e}", "error")
+            return None
+    
     def execute_delay(self, duration_ms: int) -> None:
         """
         执行延时

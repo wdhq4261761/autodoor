@@ -213,6 +213,44 @@ class InputController:
             if self._impl:
                 return self._impl.mouse_move(x, y)
             return False
+    
+    @handle_permission_errors
+    def move_relative(self, dx, dy, priority=0):
+        """相对移动鼠标"""
+        with self.mouse_lock.acquire(priority):
+            if self._impl:
+                return self._impl.mouse_move_relative(dx, dy)
+            return False
+    
+    @handle_permission_errors
+    def scroll(self, clicks, priority=0):
+        """
+        鼠标滚轮滚动
+        
+        Args:
+            clicks: 滚动次数，正数向上，负数向下
+            priority: 优先级
+        
+        Returns:
+            是否执行成功
+        """
+        with self.mouse_lock.acquire(priority):
+            if self._impl:
+                return self._impl.mouse_scroll(clicks)
+            return False
+    
+    def get_position(self):
+        """
+        获取当前鼠标位置
+        
+        Returns:
+            鼠标位置 或 None
+        """
+        try:
+            import pyautogui
+            return pyautogui.position()
+        except:
+            return None
 
 
 def create_input_controller(app=None, method: str = None) -> InputController:
