@@ -35,6 +35,7 @@ NODE_CATEGORY_MAP = {
     "KeyPressNode": "action",
     "MouseClickNode": "action",
     "MouseMoveNode": "action",
+    "MouseScrollNode": "action",
     "DelayNode": "action",
     "SetVariableNode": "action",
     "ScriptNode": "action",
@@ -53,6 +54,7 @@ NODE_DISPLAY_NAMES = {
     "KeyPressNode": "按键",
     "MouseClickNode": "点击",
     "MouseMoveNode": "移动",
+    "MouseScrollNode": "滚轮",
     "DelayNode": "延时",
     "SetVariableNode": "设变量",
     "ScriptNode": "脚本",
@@ -626,12 +628,24 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         self._panning = False
     
     def _on_scroll(self, event):
-        """滚轮事件"""
+        """滚轮事件 - 以鼠标位置为中心缩放"""
+        mouse_x = event.x
+        mouse_y = event.y
+        
+        canvas_x_before = (mouse_x - self.pan_x) / self.zoom
+        canvas_y_before = (mouse_y - self.pan_y) / self.zoom
+        
         if event.delta > 0:
-            self.zoom *= 1.1
+            new_zoom = self.zoom * 1.1
         else:
-            self.zoom /= 1.1
-        self.zoom = max(0.25, min(4.0, self.zoom))
+            new_zoom = self.zoom / 1.1
+        
+        new_zoom = max(0.25, min(4.0, new_zoom))
+        
+        self.pan_x = mouse_x - canvas_x_before * new_zoom
+        self.pan_y = mouse_y - canvas_y_before * new_zoom
+        self.zoom = new_zoom
+        
         self._redraw_all()
         self._draw_grid()
     
@@ -878,6 +892,58 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         self._connect_start_node = None
         self._connect_start_pos = None
         self._connect_line = None
+        self._draw_grid()
+    
+    def reset_view(self):
+        """重置视图，自动定位到节点位置"""
+        if not self.nodes:
+            self.zoom = 1.0
+            self.pan_x = 0
+            self.pan_y = 0
+            self._redraw_all()
+            self._draw_grid()
+            return
+        
+        min_x = float('inf')
+        min_y = float('inf')
+        max_x = float('-inf')
+        max_y = float('-inf')
+        
+        for node in self.nodes.values():
+            x = node.x
+            y = node.y
+            w = node.width
+            h = node.height
+            
+            min_x = min(min_x, x)
+            min_y = min(min_y, y)
+            max_x = max(max_x, x + w)
+            max_y = max(max_y, y + h)
+        
+        center_x = (min_x + max_x) / 2
+        center_y = (min_y + max_y) / 2
+        
+        canvas_width = self.canvas.winfo_width()
+        canvas_height = self.canvas.winfo_height()
+        
+        if canvas_width <= 1 or canvas_height <= 1:
+            canvas_width = 800
+            canvas_height = 600
+        
+        nodes_width = max_x - min_x
+        nodes_height = max_y - min_y
+        
+        padding = 100
+        zoom_x = (canvas_width - 2 * padding) / nodes_width if nodes_width > 0 else 1.0
+        zoom_y = (canvas_height - 2 * padding) / nodes_height if nodes_height > 0 else 1.0
+        
+        self.zoom = min(zoom_x, zoom_y, 1.0)
+        self.zoom = max(0.25, min(4.0, self.zoom))
+        
+        self.pan_x = canvas_width / 2 - center_x * self.zoom
+        self.pan_y = canvas_height / 2 - center_y * self.zoom
+        
+        self._redraw_all()
         self._draw_grid()
     
     def set_node_status(self, node_id: str, status: NodeExecutionStatus):

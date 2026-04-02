@@ -36,6 +36,7 @@ def register_adapters() -> None:
         NODE_TYPE_MAP["KeyPressNode"] = KeyPressNode
         NODE_TYPE_MAP["MouseClickNode"] = MouseClickNode
         NODE_TYPE_MAP["MouseMoveNode"] = MouseMoveNode
+        NODE_TYPE_MAP["MouseScrollNode"] = MouseScrollNode
         NODE_TYPE_MAP["DelayNode"] = DelayNode
         NODE_TYPE_MAP["SetVariableNode"] = SetVariableNode
         NODE_TYPE_MAP["ScriptNode"] = ScriptNode

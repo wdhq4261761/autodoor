@@ -83,7 +83,22 @@ class MouseClickNode(ActionNode):
             if use_blackboard:
                 click_position = context.blackboard.get(position_key)
             
-            if click_count > 1:
+            if click_count == -1:
+                click_index = 0
+                while context.check_running():
+                    success = context.execute_mouse_click(button, action, click_position, duration)
+                    
+                    if not success:
+                        context.log(f"鼠标节点 {self.name}: 第{click_index+1}次点击执行失败")
+                        return NodeStatus.FAILURE
+                    
+                    click_index += 1
+                    time.sleep(click_interval / 1000.0)
+                
+                pos_str = click_position if click_position else "当前位置"
+                context.log(f"鼠标节点 {self.name}: 无限点击已停止，共点击{click_index}次 {button} @ {pos_str}")
+                return NodeStatus.SUCCESS
+            elif click_count > 1:
                 for i in range(click_count):
                     if not context.check_running():
                         return NodeStatus.ABORTED
@@ -182,7 +197,10 @@ class MouseMoveNode(ActionNode):
                 
                 
                 context.input_controller.move_to(move_position[0], move_position[1])
+                time.sleep(0.05)
+                
                 context.input_controller.mouse_down(drag_button)
+                time.sleep(0.05)
                 
                 if drag_duration > 0:
                     steps = max(10, drag_duration // 50)
@@ -200,8 +218,21 @@ class MouseMoveNode(ActionNode):
                         context.input_controller.move_to(current_x, current_y)
                         time.sleep(drag_duration / 1000.0 / steps)
                 else:
-                    context.input_controller.move_to(drag_end_position[0], drag_end_position[1])
+                    steps = 20
+                    dx = (drag_end_position[0] - move_position[0]) / steps
+                    dy = (drag_end_position[1] - move_position[1]) / steps
+                    
+                    for i in range(steps):
+                        if not context.check_running():
+                            context.input_controller.mouse_up(drag_button)
+                            return NodeStatus.ABORTED
+                        
+                        current_x = int(move_position[0] + dx * (i + 1))
+                        current_y = int(move_position[1] + dy * (i + 1))
+                        context.input_controller.move_to(current_x, current_y)
+                        time.sleep(0.02)
                 
+                time.sleep(0.05)
                 context.input_controller.mouse_up(drag_button)
                 
                 context.log(f"鼠标移动节点 {self.name}: 从 {move_position} 拖拽到 {drag_end_position}")
@@ -253,21 +284,31 @@ class MouseScrollNode(ActionNode):
         super().__init__(node_id, config)
     
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
+        distance = self.config.get("distance", 5)
         clicks = self.config.get("clicks", 1)
-        direction = self.config.get("direction", "垂直")
-        speed = self.config.get("scroll_speed", "正常")
+        direction = self.config.get("direction", "向上")
         
         try:
-            success = context.execute_mouse_scroll(clicks, direction, speed)
+            scroll_distance = distance
+            scroll_direction = "垂直"
+            
+            if direction == "向上":
+                scroll_distance = abs(distance)
+                scroll_direction = "垂直"
+            elif direction == "向下":
+                scroll_distance = -abs(distance)
+                scroll_direction = "垂直"
+            elif direction == "向左":
+                scroll_distance = -abs(distance)
+                scroll_direction = "水平"
+            elif direction == "向右":
+                scroll_distance = abs(distance)
+                scroll_direction = "水平"
+            
+            success = context.execute_mouse_scroll(scroll_distance, clicks, scroll_direction)
             
             if success:
-                dir_str = "水平" if direction == "水平" else "垂直"
-                if direction == "水平":
-                    direction_str = "向右" if clicks > 0 else "向左"
-                else:
-                    direction_str = "向上" if clicks > 0 else "向下"
-                
-                context.log(f"鼠标滚轮节点 {self.name}: {dir_str}{direction_str}滚动 {abs(clicks)} 次")
+                context.log(f"鼠标滚轮节点 {self.name}: {direction}滚动 {abs(distance)}距离 × {clicks}次")
                 return NodeStatus.SUCCESS
             else:
                 context.log(f"鼠标滚轮节点 {self.name}: 滚轮执行失败")
@@ -281,9 +322,9 @@ class MouseScrollNode(ActionNode):
         data = super().to_dict()
         data["config"] = {
             **self.config,
+            "distance": self.config.get("distance", 5),
             "clicks": self.config.get("clicks", 1),
-            "direction": self.config.get("direction", "垂直"),
-            "scroll_speed": self.config.get("scroll_speed", "正常"),
+            "direction": self.config.get("direction", "向上"),
         }
         return data
 

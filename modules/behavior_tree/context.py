@@ -220,14 +220,14 @@ class ExecutionContext:
             self.log(f"鼠标点击失败: {e}", "error")
             return False
     
-    def execute_mouse_scroll(self, clicks: int, direction: str = "垂直", speed: str = "正常") -> bool:
+    def execute_mouse_scroll(self, distance: int, clicks: int = 1, direction: str = "垂直") -> bool:
         """
         执行鼠标滚轮操作
         
         Args:
-            clicks: 滚动次数，正数向上/右，负数向下/左
+            distance: 每次滚动的距离
+            clicks: 滚动次数
             direction: 滚动方向 (垂直/水平)
-            speed: 滚动速度 (慢速/正常/快速)
             
         Returns:
             是否执行成功
@@ -236,32 +236,22 @@ class ExecutionContext:
             return False
         
         try:
-            speed_map = {
-                "慢速": 0.1,
-                "正常": 0.05,
-                "快速": 0.01
-            }
-            
-            interval = speed_map.get(speed, 0.05)
-            abs_clicks = abs(clicks)
-            
-            for i in range(abs_clicks):
+            for i in range(clicks):
                 if not self.check_running():
                     return False
                 
-                if direction == "水平":
-                    if clicks > 0:
-                        self.input_controller.scroll(1)
-                    else:
-                        self.input_controller.scroll(-1)
-                else:
-                    if clicks > 0:
-                        self.input_controller.scroll(1)
-                    else:
-                        self.input_controller.scroll(-1)
+                scroll_amount = abs(distance)
                 
-                if i < abs_clicks - 1:
-                    time.sleep(interval)
+                if direction == "水平":
+                    if distance > 0:
+                        self.input_controller.scroll(scroll_amount)
+                    else:
+                        self.input_controller.scroll(-scroll_amount)
+                else:
+                    if distance > 0:
+                        self.input_controller.scroll(scroll_amount)
+                    else:
+                        self.input_controller.scroll(-scroll_amount)
             
             return True
         except Exception as e:

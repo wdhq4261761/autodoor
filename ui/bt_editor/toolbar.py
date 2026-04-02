@@ -25,6 +25,7 @@ class EditorToolbar(ctk.CTkFrame):
         on_undo: Optional[Callable] = None,
         on_redo: Optional[Callable] = None,
         on_clear: Optional[Callable] = None,
+        on_reset_view: Optional[Callable] = None,
         **kwargs
     ):
         super().__init__(master, **kwargs)
@@ -35,6 +36,7 @@ class EditorToolbar(ctk.CTkFrame):
         self.on_undo = on_undo
         self.on_redo = on_redo
         self.on_clear = on_clear
+        self.on_reset_view = on_reset_view
         self.is_running = False
         
         self._dark_colors = Theme.get_dark_colors()
@@ -165,22 +167,18 @@ class EditorToolbar(ctk.CTkFrame):
         )
         self.file_path_label.pack(side="left", padx=(0, Theme.DIMENSIONS['spacing_md']))
         
-        self.status_indicator = ctk.CTkFrame(
+        ctk.CTkButton(
             status_frame,
-            width=8,
-            height=8,
-            fg_color=self._dark_colors['success'],
-            corner_radius=4
-        )
-        self.status_indicator.pack(side="left", padx=(0, Theme.DIMENSIONS['spacing_sm']))
-        
-        self.status_label = ctk.CTkLabel(
-            status_frame,
-            text="就绪",
+            text="重置视图",
+            width=80,
             font=Theme.get_font('sm'),
-            text_color=self._dark_colors['text_secondary']
-        )
-        self.status_label.pack(side="left")
+            height=Theme.DIMENSIONS['button_height'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius'],
+            fg_color=self._dark_colors['bg_tertiary'],
+            hover_color=self._dark_colors['border'],
+            text_color=self._dark_colors['text_primary'],
+            command=self._on_reset_view_click
+        ).pack(side="left", padx=Theme.DIMENSIONS['spacing_xs'])
     
     def _on_new_click(self):
         """新建"""
@@ -224,6 +222,11 @@ class EditorToolbar(ctk.CTkFrame):
         if self.on_clear:
             self.on_clear()
     
+    def _on_reset_view_click(self):
+        """重置视图"""
+        if self.on_reset_view:
+            self.on_reset_view()
+    
     def update_undo_redo(self, can_undo: bool, can_redo: bool, 
                          undo_desc: Optional[str] = None, 
                          redo_desc: Optional[str] = None):
@@ -234,19 +237,10 @@ class EditorToolbar(ctk.CTkFrame):
     def set_running(self, running: bool):
         """设置运行状态"""
         self.is_running = running
-        if running:
-            self.status_indicator.configure(fg_color=self._dark_colors['warning'])
-            self.status_label.configure(text="运行中", text_color=self._dark_colors['warning'])
-        else:
-            self.status_indicator.configure(fg_color=self._dark_colors['success'])
-            self.status_label.configure(text="就绪", text_color=self._dark_colors['text_secondary'])
     
     def set_status(self, text: str, color: Optional[str] = None):
         """设置状态"""
-        self.status_label.configure(text=text)
-        if color:
-            self.status_indicator.configure(fg_color=color)
-            self.status_label.configure(text_color=color)
+        pass
     
     def set_file_path(self, file_path: Optional[str]):
         """设置文件路径显示"""

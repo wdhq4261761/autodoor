@@ -34,7 +34,7 @@ from modules.color import ColorRecognitionManager
 from modules.image import ImageDetectionManager
 from modules.background import BackgroundManager
 
-VERSION = "3.0.0"
+VERSION = "3.0.1"
 
 
 class AutoDoorOCR:

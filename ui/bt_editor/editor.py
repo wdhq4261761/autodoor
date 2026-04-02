@@ -114,7 +114,8 @@ class BehaviorTreeEditor(ctk.CTkFrame):
             on_save=self._on_save,
             on_undo=self._on_undo,
             on_redo=self._on_redo,
-            on_clear=self._on_clear_canvas
+            on_clear=self._on_clear_canvas,
+            on_reset_view=self._on_reset_view
         )
         self.toolbar.pack(fill="x")
         
@@ -332,6 +333,11 @@ class BehaviorTreeEditor(ctk.CTkFrame):
         self.command_manager.clear()
         self.toolbar.set_status("画布已清空")
         self._update_undo_redo_buttons()
+    
+    def _on_reset_view(self):
+        """重置视图"""
+        self.canvas.reset_view()
+        self.toolbar.set_status("视图已重置")
     
     def _on_node_add(self, node_type: str):
         """添加节点"""
