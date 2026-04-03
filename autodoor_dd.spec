@@ -4,8 +4,21 @@ block_cipher = None
 
 import os
 import sys
+import re
 from PyInstaller.utils.hooks import collect_submodules
 project_root = os.path.abspath('.')
+
+def get_version():
+    """从 autodoor.py 读取版本号"""
+    version_file = os.path.join(project_root, 'autodoor.py')
+    with open(version_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+        match = re.search(r'VERSION\s*=\s*["\']([^"\']+)["\']', content)
+        if match:
+            return match.group(1)
+    return "0.0.0"
+
+VERSION = get_version()
 
 tesseract_files = []
 tesseract_dir = os.path.join(project_root, 'tesseract')
@@ -189,7 +202,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='autodoor_dd',
+    name=f'autodoor-behaviortree-{VERSION}-game',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -211,5 +224,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name='autodoor_dd',
+    name=f'autodoor-behaviortree-{VERSION}-game',
 )

@@ -27,6 +27,13 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Get version from autodoor.py
+      id: get_version
+      run: |
+        $VERSION = (Select-String -Path "autodoor.py" -Pattern 'VERSION\s*=\s*"([^"]+)"' | ForEach-Object { $_.Matches.Groups[1].Value })
+        Write-Host "Version: $VERSION"
+        echo "VERSION=$VERSION" >> $env:GITHUB_OUTPUT
+    
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -73,19 +80,24 @@ jobs:
     
     - name: Verify build output
       run: |
-        if (Test-Path "${{ github.workspace }}\dist\autodoor\autodoor.exe") {
-            Write-Host "OK Build successful: autodoor.exe found"
-            Get-Item "${{ github.workspace }}\dist\autodoor\autodoor.exe" | Select-Object Name, Length, LastWriteTime
+        $VERSION = (Select-String -Path "autodoor.py" -Pattern 'VERSION\s*=\s*"([^"]+)"' | ForEach-Object { $_.Matches.Groups[1].Value })
+        $EXE_NAME = "autodoor-behaviortree-$VERSION-normal.exe"
+        $DIR_NAME = "autodoor-behaviortree-$VERSION-normal"
+        
+        if (Test-Path "${{ github.workspace }}\dist\$DIR_NAME\$EXE_NAME") {
+            Write-Host "OK Build successful: $EXE_NAME found"
+            Get-Item "${{ github.workspace }}\dist\$DIR_NAME\$EXE_NAME" | Select-Object Name, Length, LastWriteTime
         } else {
-            Write-Host "ERROR Build failed: autodoor.exe not found"
+            Write-Host "ERROR Build failed: $EXE_NAME not found"
+            Write-Host "Looking for: ${{ github.workspace }}\dist\$DIR_NAME\$EXE_NAME"
             exit 1
         }
     
     - name: Archive Windows Standard build
       uses: actions/upload-artifact@v4
       with:
-        name: autodoor-windows-standard
-        path: dist/autodoor/
+        name: autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}-normal
+        path: dist/autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}-normal/
         retention-days: 30
 
   build-windows-dd:
@@ -93,6 +105,13 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
+    
+    - name: Get version from autodoor.py
+      id: get_version
+      run: |
+        $VERSION = (Select-String -Path "autodoor.py" -Pattern 'VERSION\s*=\s*"([^"]+)"' | ForEach-Object { $_.Matches.Groups[1].Value })
+        Write-Host "Version: $VERSION"
+        echo "VERSION=$VERSION" >> $env:GITHUB_OUTPUT
     
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -142,25 +161,30 @@ jobs:
     
     - name: Verify build output
       run: |
-        if (Test-Path "${{ github.workspace }}\dist\autodoor_dd\autodoor_dd.exe") {
-            Write-Host "OK Build successful: autodoor_dd.exe found"
-            Get-Item "${{ github.workspace }}\dist\autodoor_dd\autodoor_dd.exe" | Select-Object Name, Length, LastWriteTime
+        $VERSION = (Select-String -Path "autodoor.py" -Pattern 'VERSION\s*=\s*"([^"]+)"' | ForEach-Object { $_.Matches.Groups[1].Value })
+        $EXE_NAME = "autodoor-behaviortree-$VERSION-game.exe"
+        $DIR_NAME = "autodoor-behaviortree-$VERSION-game"
+        
+        if (Test-Path "${{ github.workspace }}\dist\$DIR_NAME\$EXE_NAME") {
+            Write-Host "OK Build successful: $EXE_NAME found"
+            Get-Item "${{ github.workspace }}\dist\$DIR_NAME\$EXE_NAME" | Select-Object Name, Length, LastWriteTime
             
-            if (Test-Path "${{ github.workspace }}\dist\autodoor_dd\drivers\DD64.dll") {
+            if (Test-Path "${{ github.workspace }}\dist\$DIR_NAME\drivers\DD64.dll") {
                 Write-Host "OK DD64.dll included in build"
             } else {
                 Write-Host "WARN DD64.dll not found in build output"
             }
         } else {
-            Write-Host "ERROR Build failed: autodoor_dd.exe not found"
+            Write-Host "ERROR Build failed: $EXE_NAME not found"
+            Write-Host "Looking for: ${{ github.workspace }}\dist\$DIR_NAME\$EXE_NAME"
             exit 1
         }
     
     - name: Archive Windows DD build
       uses: actions/upload-artifact@v4
       with:
-        name: autodoor-windows-dd
-        path: dist/autodoor_dd/
+        name: autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}-game
+        path: dist/autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}-game/
         retention-days: 30
 
   deploy:
@@ -227,19 +251,19 @@ jobs:
     - name: Download Windows Standard build
       uses: actions/download-artifact@v4
       with:
-        name: autodoor-windows-standard
-        path: windows-standard-build
+        name: autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}-normal
+        path: windows-normal-build
     
     - name: Download Windows DD build
       uses: actions/download-artifact@v4
       with:
-        name: autodoor-windows-dd
-        path: windows-dd-build
+        name: autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}-game
+        path: windows-game-build
     
     - name: Create zip archives
       run: |
-        zip -r autodoor-windows-standard-${{ steps.get_version.outputs.VERSION }}.zip windows-standard-build/
-        zip -r autodoor-windows-dd-${{ steps.get_version.outputs.VERSION }}.zip windows-dd-build/
+        zip -r autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}-normal.zip windows-normal-build/
+        zip -r autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}-game.zip windows-game-build/
     
     - name: Read update content
       id: read_update_content
@@ -250,7 +274,7 @@ jobs:
           echo "$UPDATE_CONTENT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
         else
-          DEFAULT_CONTENT="AutoDoor OCR v${{ steps.get_version.outputs.VERSION }}\n\n## Version Description\n- **Windows Standard**: Uses PyAutoGUI, suitable for general applications\n- **Windows DD Version**: Uses DD Virtual Keyboard, suitable for DirectInput games\n\n## Download Files\n- autodoor-windows-standard-${{ steps.get_version.outputs.VERSION }}.zip (Standard)\n- autodoor-windows-dd-${{ steps.get_version.outputs.VERSION }}.zip (DD Version)"
+          DEFAULT_CONTENT="AutoDoor BehaviorTree v${{ steps.get_version.outputs.VERSION }}\n\n## Version Description\n- **Normal Version**: Uses PyAutoGUI, suitable for general applications\n- **Game Version**: Uses DD Virtual Keyboard, suitable for DirectInput games\n\n## Download Files\n- autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}-normal.zip (Normal)\n- autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}-game.zip (Game Version)"
           echo "UPDATE_CONTENT<<EOF" >> $GITHUB_OUTPUT
           echo "$DEFAULT_CONTENT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -265,5 +289,5 @@ jobs:
         draft: false
         prerelease: false
         files: |
-          autodoor-windows-standard-${{ steps.get_version.outputs.VERSION }}.zip
-          autodoor-windows-dd-${{ steps.get_version.outputs.VERSION }}.zip
+          autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}-normal.zip
+          autodoor-behaviortree-${{ steps.get_version.outputs.VERSION }}-game.zip
