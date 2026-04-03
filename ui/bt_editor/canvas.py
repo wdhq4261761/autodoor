@@ -101,6 +101,7 @@ class NodeItem:
         self._selected = False
         self._flash_state = False
         self._flash_job = None
+        self._status_visible = False
         
         self._dark_colors = Theme.get_dark_colors()
         self._category = NODE_CATEGORY_MAP.get(node_type, "action")
@@ -197,7 +198,8 @@ class NodeItem:
             y + status_radius,
             fill=self._dark_colors['bg_tertiary'],
             outline="",
-            tags=("node_status_bg", self.node_id)
+            tags=("node_status_bg", self.node_id),
+            state='hidden'
         )
         
         self.status_icon = self.canvas.create_text(
@@ -206,7 +208,8 @@ class NodeItem:
             text="",
             fill=self._dark_colors['text_secondary'],
             font=("Arial", max(8, int(10 * self._zoom)), "bold"),
-            tags=("node_icon", self.node_id)
+            tags=("node_icon", self.node_id),
+            state='hidden'
         )
         
         port_radius = self._scale(PORT_RADIUS)
@@ -325,6 +328,20 @@ class NodeItem:
             self.canvas.itemconfig(self.status_bg, fill=self._dark_colors['bg_tertiary'])
             self.canvas.itemconfig(self.status_icon, fill=self._dark_colors['text_secondary'])
     
+    def show_status_indicator(self):
+        """显示状态指示器"""
+        if not self._status_visible:
+            self._status_visible = True
+            self.canvas.itemconfig(self.status_bg, state='normal')
+            self.canvas.itemconfig(self.status_icon, state='normal')
+    
+    def hide_status_indicator(self):
+        """隐藏状态指示器"""
+        if self._status_visible:
+            self._status_visible = False
+            self.canvas.itemconfig(self.status_bg, state='hidden')
+            self.canvas.itemconfig(self.status_icon, state='hidden')
+    
     def _start_flashing(self):
         """开始闪烁动画"""
         self._flash_state = not self._flash_state
@@ -355,6 +372,7 @@ class NodeItem:
         self._update_outline()
         self.canvas.itemconfig(self.status_icon, text="")
         self.canvas.itemconfig(self.status_bg, fill=self._dark_colors['bg_tertiary'])
+        self.hide_status_indicator()
 
 
 class BehaviorTreeCanvas(ctk.CTkFrame):
@@ -949,7 +967,19 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
     def set_node_status(self, node_id: str, status: NodeExecutionStatus):
         """设置节点执行状态"""
         if node_id in self.nodes:
-            self.nodes[node_id].set_status(status)
+            node = self.nodes[node_id]
+            node.show_status_indicator()
+            node.set_status(status)
+    
+    def show_all_status_indicators(self):
+        """显示所有节点的状态指示器"""
+        for node in self.nodes.values():
+            node.show_status_indicator()
+    
+    def hide_all_status_indicators(self):
+        """隐藏所有节点的状态指示器"""
+        for node in self.nodes.values():
+            node.hide_status_indicator()
     
     def reset_all_status(self):
         """重置所有节点状态"""

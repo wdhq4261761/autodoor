@@ -17,7 +17,8 @@ def _start_selection(app, selection_type, region_index):
         "image": "图像检测区域",
         "crop": "图像裁剪区域",
         "bg_region": "后台监控区域",
-        "bg_crop": "后台监控模板截图"
+        "bg_crop": "后台监控模板截图",
+        "screenshot": "模板截图区域"
     }
     app.logging_manager.log_message(f"开始{type_names.get(selection_type, '')}区域选择...")
     app.is_selecting = True
@@ -168,6 +169,11 @@ def on_mouse_up(app, event):
             cancel_selection(app)
             from ui.background_tab import save_bg_cropped_image
             save_bg_cropped_image(app, region)
+            return
+        elif app.selection_type == 'screenshot':
+            cancel_selection(app)
+            if hasattr(app, '_screenshot_callback') and callable(app._screenshot_callback):
+                app._screenshot_callback(region)
             return
         elif app.selection_type == 'color':
             if not hasattr(app, 'color_recognition_manager'):

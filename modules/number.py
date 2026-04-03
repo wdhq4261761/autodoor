@@ -4,7 +4,6 @@ from PIL import Image
 from input.permissions import PermissionManager
 from utils.screenshot import ScreenshotManager
 from utils.recognition import NumberRecognizer
-from utils.image import _preprocess_image
 from core.priority_lock import get_module_priority
 
 
@@ -106,8 +105,29 @@ class NumberModule:
             return None
 
     def ocr_number(self, image):
-        processed_image = _preprocess_image(image, group_index=None)
+        processed_image = self._preprocess_number_image(image)
         if processed_image is None:
             processed_image = image.convert('L')
         
-        return NumberRecognizer.recognize(processed_image)
+        high_conf_text, confidence, all_text = NumberRecognizer.recognize_with_confidence(processed_image)
+        return high_conf_text if high_conf_text else all_text
+    
+    def _preprocess_number_image(self, image):
+        """
+        数字识别专用图像预处理 - 增强识别精度
+        """
+        try:
+            from PIL import ImageEnhance, ImageFilter
+            
+            image = image.convert('L')
+            
+            enhancer = ImageEnhance.Contrast(image)
+            image = enhancer.enhance(1.5)
+            
+            image = image.filter(ImageFilter.SHARPEN)
+            
+            image = image.point(lambda p: p > 128 and 255)
+            
+            return image
+        except Exception:
+            return None

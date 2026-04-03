@@ -43,7 +43,10 @@ class AddNodeCommand(Command):
     
     def execute(self) -> bool:
         if self.canvas and hasattr(self.canvas, 'add_node'):
-            self.canvas.add_node(self.node_id, self.node_type, self.x, self.y)
+            name = self.node_data.get('name', '')
+            config = self.node_data.get('config', {})
+            enabled = self.node_data.get('enabled', True)
+            self.canvas.add_node(self.node_id, self.node_type, self.x, self.y, name, config, enabled)
             return True
         return False
     

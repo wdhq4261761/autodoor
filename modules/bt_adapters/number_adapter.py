@@ -32,6 +32,9 @@ class NumberConditionNode(ConditionNode):
         value_key = self.config.get("value_key", "last_number_value")
         extract_mode = self.config.get("extract_mode", "无规则")
         extract_pattern = self.config.get("extract_pattern", "")
+        position_key = self.config.get("position_key") or "last_detection_position"
+        min_confidence = self.config.get("min_confidence", 50)
+        preprocess_mode = self.config.get("preprocess_mode", "普通文本")
         
         try:
             screenshot = context.get_screenshot(region)
@@ -40,25 +43,27 @@ class NumberConditionNode(ConditionNode):
                 context.log(f"数字节点 {self.name}: 截图失败")
                 return NodeStatus.FAILURE
             
-            processed_image = self._preprocess_image(screenshot)
+            processed_image = self._preprocess_image(screenshot, preprocess_mode)
             if processed_image is None:
                 context.log(f"数字节点 {self.name}: 图像预处理失败")
                 return NodeStatus.FAILURE
             
             from utils.recognition import NumberRecognizer
             
-            text = NumberRecognizer.recognize(processed_image)
+            high_conf_text, confidence, all_text = NumberRecognizer.recognize_with_confidence(processed_image)
             
-            if text is None:
-                context.log(f"数字节点 {self.name}: OCR识别失败")
+            if not all_text:
+                context.log(f"数字节点: 未识别到文本")
                 return NodeStatus.FAILURE
             
-            context.log(f"数字节点 {self.name}: 识别结果 '{text.strip()}'")
+            if not high_conf_text or confidence < min_confidence:
+                context.log(f"数字节点: 识别置信度过低")
+                return NodeStatus.FAILURE
             
-            number = NumberRecognizer.extract_number(text, extract_mode, extract_pattern)
+            number = NumberRecognizer.extract_number(high_conf_text, extract_mode, extract_pattern)
             
             if number is None:
-                context.log(f"数字节点 {self.name}: 无法解析数字 '{text.strip()}'")
+                context.log(f"数字节点: 无法解析数字")
                 return NodeStatus.FAILURE
             
             if save_value:
@@ -67,37 +72,62 @@ class NumberConditionNode(ConditionNode):
             result = self._compare(number, threshold, compare_mode)
             
             if result:
-                context.log(f"数字节点 {self.name}: 条件满足 ({number} {compare_mode} {threshold})")
+                position = NumberRecognizer.find_number_position(screenshot, number)
+                if position:
+                    abs_x = region[0] + position[0]
+                    abs_y = region[1] + position[1]
+                    context.blackboard.set(position_key, (abs_x, abs_y))
+                context.log(f"数字节点: 识别到 {number}")
                 return NodeStatus.SUCCESS
             else:
-                context.log(f"数字节点 {self.name}: 条件不满足 ({number} {compare_mode} {threshold})")
+                context.log(f"数字节点: 识别到 {number}，条件不满足")
                 return NodeStatus.FAILURE
                 
         except Exception as e:
-            context.log(f"数字节点 {self.name}: 执行出错 - {e}")
+            context.log(f"数字节点: 执行出错 - {e}")
             return NodeStatus.FAILURE
     
-    def _preprocess_image(self, image):
+    def _preprocess_image(self, image, mode: str = "普通文本"):
         """
-        图像预处理 - 与原项目数字识别模块保持一致
+        图像预处理 - 根据模式增强数字识别精度
         
         Args:
             image: PIL.Image 原始图像
+            mode: 预处理模式
+                - "普通文本": 标准预处理，适用于普通文本数字
+                - "艺术字": 激进预处理，适用于粗体、彩色、艺术字数字
             
         Returns:
             PIL.Image: 处理后的图像
         """
         try:
             from PIL import ImageEnhance, ImageFilter
+            import numpy as np
             
             image = image.convert('L')
             
-            enhancer = ImageEnhance.Contrast(image)
-            image = enhancer.enhance(1.5)
-            
-            image = image.filter(ImageFilter.SHARPEN)
-            
-            image = image.point(lambda p: p > 128 and 255)
+            if mode == "艺术字":
+                img_array = np.array(image)
+                background = np.mean(img_array)
+                if background < 128:
+                    image = Image.eval(image, lambda x: 255 - x)
+                
+                enhancer = ImageEnhance.Contrast(image)
+                image = enhancer.enhance(2.5)
+                
+                image = image.filter(ImageFilter.SHARPEN)
+                image = image.filter(ImageFilter.SHARPEN)
+                
+                image = image.filter(ImageFilter.MedianFilter(size=3))
+                
+                image = image.point(lambda p: p > 150 and 255)
+            else:
+                enhancer = ImageEnhance.Contrast(image)
+                image = enhancer.enhance(1.5)
+                
+                image = image.filter(ImageFilter.SHARPEN)
+                
+                image = image.point(lambda p: p > 128 and 255)
             
             return image
         except Exception as e:
@@ -154,5 +184,8 @@ class NumberConditionNode(ConditionNode):
             "value_key": self.config.get("value_key", "last_number_value"),
             "extract_mode": self.config.get("extract_mode", "无规则"),
             "extract_pattern": self.config.get("extract_pattern", ""),
+            "position_key": self.config.get("position_key", "last_detection_position"),
+            "min_confidence": self.config.get("min_confidence", 50),
+            "preprocess_mode": self.config.get("preprocess_mode", "普通文本"),
         }
         return data

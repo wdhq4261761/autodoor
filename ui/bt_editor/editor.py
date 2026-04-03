@@ -4,6 +4,7 @@
 整合所有编辑器组件，支持自动保存和崩溃恢复
 """
 
+import copy
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from typing import Any, Dict, Optional, TYPE_CHECKING
@@ -473,7 +474,12 @@ class BehaviorTreeEditor(ctk.CTkFrame):
                     node_id=new_id,
                     node_type=node.node_type,
                     x=node.x + 50,
-                    y=node.y + 50
+                    y=node.y + 50,
+                    node_data={
+                        'name': node.name,
+                        'config': copy.deepcopy(node.config) if node.config else {},
+                        'enabled': node.enabled
+                    }
                 )
                 self.command_manager.execute(command)
                 self._is_modified = True
@@ -520,8 +526,11 @@ class BehaviorTreeEditor(ctk.CTkFrame):
     def set_running(self, running: bool):
         """设置运行状态（供外部调用）"""
         self.toolbar.set_running(running)
-        if not running:
+        if running:
+            self.canvas.show_all_status_indicators()
+        else:
             self.canvas.reset_all_status()
+            self.canvas.hide_all_status_indicators()
     
     def update_node_status(self, node_id: str, status: str):
         """更新节点状态（供外部调用）"""

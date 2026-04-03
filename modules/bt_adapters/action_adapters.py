@@ -73,7 +73,7 @@ class MouseClickNode(ActionNode):
         duration = self.config.get("duration", 0)
         position = self.config.get("position")
         use_blackboard = self.config.get("use_blackboard", False)
-        position_key = self.config.get("position_key", "last_detection_position")
+        position_key = self.config.get("position_key") or "last_detection_position"
         click_count = self.config.get("click_count", 1)
         click_interval = self.config.get("click_interval", 100)
         
@@ -89,14 +89,13 @@ class MouseClickNode(ActionNode):
                     success = context.execute_mouse_click(button, action, click_position, duration)
                     
                     if not success:
-                        context.log(f"鼠标节点 {self.name}: 第{click_index+1}次点击执行失败")
                         return NodeStatus.FAILURE
                     
                     click_index += 1
                     time.sleep(click_interval / 1000.0)
                 
                 pos_str = click_position if click_position else "当前位置"
-                context.log(f"鼠标节点 {self.name}: 无限点击已停止，共点击{click_index}次 {button} @ {pos_str}")
+                context.log(f"鼠标: {button} @ {pos_str} (点击{click_index}次)")
                 return NodeStatus.SUCCESS
             elif click_count > 1:
                 for i in range(click_count):
@@ -106,29 +105,26 @@ class MouseClickNode(ActionNode):
                     success = context.execute_mouse_click(button, action, click_position, duration)
                     
                     if not success:
-                        context.log(f"鼠标节点 {self.name}: 第{i+1}次点击执行失败")
                         return NodeStatus.FAILURE
                     
                     if i < click_count - 1:
                         time.sleep(click_interval / 1000.0)
                 
                 pos_str = click_position if click_position else "当前位置"
-                context.log(f"鼠标节点 {self.name}: {click_count}击 {button} @ {pos_str}")
+                context.log(f"鼠标: {click_count}击 {button} @ {pos_str}")
                 return NodeStatus.SUCCESS
             else:
                 success = context.execute_mouse_click(button, action, click_position, duration)
                 
                 if success:
                     pos_str = click_position if click_position else "当前位置"
-                    action_str = {"press": "点击", "down": "按下", "up": "抬起"}.get(action, action)
-                    context.log(f"鼠标节点 {self.name}: {action_str} {button} @ {pos_str}")
+                    context.log(f"鼠标: {button} @ {pos_str}")
                     return NodeStatus.SUCCESS
                 else:
-                    context.log(f"鼠标节点 {self.name}: 点击执行失败")
                     return NodeStatus.FAILURE
                 
         except Exception as e:
-            context.log(f"鼠标节点 {self.name}: 执行出错 - {e}")
+            context.log(f"鼠标: 执行出错 - {e}")
             return NodeStatus.FAILURE
     
     def to_dict(self) -> Dict[str, Any]:

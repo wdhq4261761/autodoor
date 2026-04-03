@@ -21,7 +21,7 @@ NODE_CONFIG_SCHEMAS = {
     ],
     "ImageConditionNode": [
         {"key": "region", "label": "检测区域", "type": "region"},
-        {"key": "template_path", "label": "模板路径", "type": "file", "width": 120, "filetypes": [("图像文件", "*.png;*.jpg;*.jpeg;*.bmp"), ("所有文件", "*.*")]},
+        {"key": "template_path", "label": "模板路径", "type": "screenshot", "width": 120, "filetypes": [("图像文件", "*.png;*.jpg;*.jpeg;*.bmp"), ("所有文件", "*.*")]},
         {"key": "threshold", "label": "匹配阈值(%)", "type": "number", "min": 0, "max": 100, "default": 80},
     ],
     "ColorConditionNode": [
@@ -31,10 +31,13 @@ NODE_CONFIG_SCHEMAS = {
     ],
     "NumberConditionNode": [
         {"key": "region", "label": "检测区域", "type": "region"},
+        {"key": "preprocess_mode", "label": "预处理模式", "type": "select", "options": ["普通文本", "艺术字"], "default": "普通文本"},
         {"key": "extract_mode", "label": "提取模式", "type": "select", "options": ["无规则", "x/y", "自定义"]},
         {"key": "extract_pattern", "label": "自定义模式", "type": "text"},
         {"key": "compare_mode", "label": "比较模式", "type": "select", "options": ["<", "<=", ">", ">=", "==", "!="]},
         {"key": "threshold", "label": "比较值", "type": "number"},
+        {"key": "min_confidence", "label": "置信度阈值(%)", "type": "number", "min": 0, "max": 100, "default": 50},
+        {"key": "position_key", "label": "位置变量名", "type": "text", "default": "last_detection_position"},
     ],
     "VariableConditionNode": [
         {"key": "variable_name", "label": "变量名", "type": "text"},
@@ -52,13 +55,14 @@ NODE_CONFIG_SCHEMAS = {
         {"key": "duration", "label": "按住时长(ms)", "type": "number"},
         {"key": "position", "label": "位置", "type": "position"},
         {"key": "use_blackboard", "label": "点击最近检测点", "type": "bool"},
+        {"key": "position_key", "label": "位置变量名", "type": "text", "default": "last_detection_position"},
         {"key": "click_count", "label": "点击次数(-1无限)", "type": "number", "min": -1, "max": 10, "default": 1},
         {"key": "click_interval", "label": "点击间隔(ms)", "type": "number", "default": 100},
     ],
     "MouseMoveNode": [
         {"key": "position", "label": "位置(拖拽时为起点)", "type": "position"},
         {"key": "use_blackboard", "label": "移动到最近检测点", "type": "bool"},
-        {"key": "position_key", "label": "黑板变量名", "type": "text"},
+        {"key": "position_key", "label": "黑板变量名", "type": "text", "default": "last_detection_position"},
         {"key": "relative", "label": "相对移动", "type": "bool"},
         {"key": "move_type", "label": "移动类型", "type": "select", "options": ["移动", "拖拽"]},
         {"key": "drag_button", "label": "拖拽按钮", "type": "select", "options": ["left", "right", "middle"]},
@@ -490,6 +494,186 @@ class FileField(FieldWidget):
             filename = file_path.split("/")[-1].split("\\")[-1]
             self.var.set(filename)
             self.on_change(self.key, file_path)
+    
+    def set_value(self, value: Any):
+        if value:
+            self.full_path = str(value)
+            filename = str(value).split("/")[-1].split("\\")[-1]
+            self.var.set(filename)
+        else:
+            self.var.set("")
+    
+    def get_value(self) -> Any:
+        return self.full_path
+
+
+class ScreenshotField(FieldWidget):
+    """截图字段（带文件选择和截图按钮）"""
+    
+    def __init__(self, master, label: str, key: str, on_change: Callable, 
+                 filetypes: List[tuple] = None, app=None, width: int = None, **kwargs):
+        self.filetypes = filetypes or [("所有文件", "*.*")]
+        self.full_path = ""
+        self.app = app
+        self._width = width
+        super().__init__(master, label, key, on_change, **kwargs)
+        self._create_widget()
+    
+    def _create_widget(self):
+        input_frame = ctk.CTkFrame(self, fg_color="transparent")
+        input_frame.pack(fill="x")
+        
+        self.var = tk.StringVar(value="")
+        
+        entry_kwargs = {
+            "textvariable": self.var,
+            "font": Theme.get_font('sm'),
+            "height": Theme.DIMENSIONS['input_height'],
+            "fg_color": self._dark_colors['bg_tertiary'],
+            "border_color": self._dark_colors['border'],
+            "text_color": self._dark_colors['text_primary'],
+            "corner_radius": Theme.DIMENSIONS['button_corner_radius'],
+            "state": "disabled"
+        }
+        if self._width:
+            entry_kwargs["width"] = self._width
+        
+        self.entry = ctk.CTkEntry(input_frame, **entry_kwargs)
+        self.entry.pack(side="left", fill="x", expand=True, padx=(0, Theme.DIMENSIONS['spacing_xs']))
+        
+        self.browse_btn = ctk.CTkButton(
+            input_frame,
+            text="浏览",
+            font=Theme.get_font('sm'),
+            width=50,
+            height=Theme.DIMENSIONS['input_height'],
+            fg_color=self._dark_colors['primary'],
+            hover_color=self._dark_colors['primary_hover'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius'],
+            command=self._browse
+        )
+        self.browse_btn.pack(side="right")
+        
+        screenshot_frame = ctk.CTkFrame(self, fg_color="transparent")
+        screenshot_frame.pack(fill="x", pady=(Theme.DIMENSIONS['spacing_xs'], 0))
+        
+        self.screenshot_btn = ctk.CTkButton(
+            screenshot_frame,
+            text="截图",
+            font=Theme.get_font('sm'),
+            width=50,
+            height=Theme.DIMENSIONS['input_height'],
+            fg_color=self._dark_colors['info'],
+            hover_color=self._dark_colors['info_hover'],
+            corner_radius=Theme.DIMENSIONS['button_corner_radius'],
+            command=self._take_screenshot
+        )
+        self.screenshot_btn.pack(side="left")
+    
+    def _browse(self):
+        import os
+        initial_dir = None
+        if self.full_path:
+            initial_dir = os.path.dirname(self.full_path)
+        elif self.app and hasattr(self.app, 'behavior_tree') and hasattr(self.app.behavior_tree, 'editor'):
+            editor = self.app.behavior_tree.editor
+            if editor.file_path:
+                initial_dir = os.path.dirname(editor.file_path)
+        
+        file_path = filedialog.askopenfilename(
+            initialdir=initial_dir,
+            title="选择文件",
+            filetypes=self.filetypes
+        )
+        
+        if file_path:
+            self.full_path = file_path
+            filename = file_path.split("/")[-1].split("\\")[-1]
+            self.var.set(filename)
+            self.on_change(self.key, file_path)
+    
+    def _take_screenshot(self):
+        """截图功能"""
+        import os
+        import time
+        from tkinter import messagebox
+        
+        try:
+            if not self.app:
+                messagebox.showerror("错误", "应用实例未初始化")
+                return
+            
+            app_dir = self._get_app_dir()
+            image_dir = os.path.join(app_dir, "image")
+            
+            if not os.path.exists(image_dir):
+                os.makedirs(image_dir)
+            
+            self.app.root.iconify()
+            
+            time.sleep(0.2)
+            
+            from utils.region import _start_selection
+            self.app._screenshot_callback = self._save_screenshot
+            _start_selection(self.app, "screenshot", 0)
+            
+        except Exception as e:
+            if self.app:
+                self.app.root.deiconify()
+            messagebox.showerror("错误", f"截图失败: {str(e)}")
+    
+    def _get_app_dir(self):
+        """获取应用目录"""
+        import os
+        if self.app and hasattr(self.app, 'behavior_tree') and hasattr(self.app.behavior_tree, 'editor'):
+            editor = self.app.behavior_tree.editor
+            if editor.file_path:
+                return os.path.dirname(editor.file_path)
+        
+        from ui.utils import get_app_dir
+        return get_app_dir()
+    
+    def _save_screenshot(self, region):
+        """保存截图"""
+        import os
+        import time
+        from tkinter import messagebox
+        from utils.screenshot import ScreenshotManager
+        
+        try:
+            app_dir = self._get_app_dir()
+            image_dir = os.path.join(app_dir, "image")
+            
+            if not os.path.exists(image_dir):
+                os.makedirs(image_dir)
+            
+            self.app.root.update()
+            time.sleep(0.1)
+            
+            screenshot = ScreenshotManager().get_region_screenshot(region)
+            
+            if not screenshot:
+                self.app.root.deiconify()
+                messagebox.showerror("错误", "无法获取截图区域")
+                return
+            
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            filename = f"template_{timestamp}.png"
+            save_path = os.path.join(image_dir, filename)
+            
+            screenshot.save(save_path)
+            
+            self.full_path = save_path
+            self.var.set(filename)
+            self.on_change(self.key, save_path)
+            
+            self.app.root.deiconify()
+            
+            messagebox.showinfo("成功", f"截图已保存到:\n{save_path}")
+            
+        except Exception as e:
+            self.app.root.deiconify()
+            messagebox.showerror("错误", f"保存截图失败: {str(e)}")
     
     def set_value(self, value: Any):
         if value:
@@ -1076,6 +1260,13 @@ class PropertyPanel(ctk.CTkFrame):
             field_widget = RegionField(self.content_frame, label, key, self._on_field_change, self.app)
         elif field_type == "file":
             field_widget = FileField(
+                self.content_frame, label, key, self._on_field_change,
+                filetypes=field.get("filetypes", [("所有文件", "*.*")]),
+                app=self.app,
+                width=field.get("width")
+            )
+        elif field_type == "screenshot":
+            field_widget = ScreenshotField(
                 self.content_frame, label, key, self._on_field_change,
                 filetypes=field.get("filetypes", [("所有文件", "*.*")]),
                 app=self.app,

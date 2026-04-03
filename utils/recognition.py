@@ -272,16 +272,17 @@ class ColorRecognizer:
 class NumberRecognizer:
     """统一的数字识别器"""
     
-    NUMBER_CONFIG = r'--psm 7 --oem 3 -c tessedit_char_whitelist=0123456789/'
+    NUMBER_CONFIG = r'--psm 7 --oem 3'
+    MIN_CONFIDENCE = 50
     
     @staticmethod
-    def recognize(image, whitelist: str = "0123456789/") -> Optional[str]:
+    def recognize(image, whitelist: str = None) -> Optional[str]:
         """
         数字OCR识别
         
         Args:
             image: PIL.Image 图像
-            whitelist: 允许的字符白名单
+            whitelist: 允许的字符白名单（可选）
         
         Returns:
             str: 识别的数字字符串，失败返回None
@@ -289,7 +290,10 @@ class NumberRecognizer:
         try:
             import pytesseract
             
-            config = f'--psm 7 --oem 3 -c tessedit_char_whitelist={whitelist}'
+            if whitelist:
+                config = f'--psm 7 --oem 3 -c tessedit_char_whitelist={whitelist}'
+            else:
+                config = '--psm 7 --oem 3'
             text = pytesseract.image_to_string(image, lang='eng', config=config)
             
             text = text.strip().replace('\n', '').replace('\r', '')
@@ -297,6 +301,61 @@ class NumberRecognizer:
             return text
         except Exception:
             return None
+    
+    @staticmethod
+    def recognize_with_confidence(image, whitelist: str = None) -> Tuple[str, int, str]:
+        """
+        数字OCR识别（带置信度）
+        
+        Args:
+            image: PIL.Image 图像
+            whitelist: 允许的字符白名单（可选）
+        
+        Returns:
+            tuple: (高置信度文本, 平均置信度, 全部识别文本)
+                - 高置信度文本: 置信度>50的文本拼接
+                - 平均置信度: 高置信度文本的平均置信度
+                - 全部识别文本: 所有识别到的文本（用于调试）
+        """
+        try:
+            import pytesseract
+            
+            if whitelist:
+                config = f'--psm 7 --oem 3 -c tessedit_char_whitelist={whitelist}'
+            else:
+                config = '--psm 7 --oem 3'
+            data = pytesseract.image_to_data(
+                image, lang='eng', 
+                config=config, 
+                output_type=pytesseract.Output.DICT
+            )
+            
+            high_conf_texts = []
+            high_conf_values = []
+            all_texts = []
+            
+            for i in range(len(data['text'])):
+                text = data['text'][i].strip()
+                conf = data['conf'][i]
+                
+                if text:
+                    all_texts.append(text)
+                    if conf > 50:
+                        high_conf_texts.append(text)
+                        high_conf_values.append(conf)
+            
+            all_text = ''.join(all_texts)
+            
+            if not high_conf_texts:
+                return ("", 0, all_text)
+            
+            result_text = ''.join(high_conf_texts)
+            avg_confidence = sum(high_conf_values) // len(high_conf_values) if high_conf_values else 0
+            
+            return (result_text, avg_confidence, all_text)
+            
+        except Exception:
+            return ("", 0, "")
     
     @staticmethod
     def parse_number(text: str, cache: dict = None) -> Optional[int]:
@@ -402,3 +461,61 @@ class NumberRecognizer:
             pass
         
         return None
+    
+    @staticmethod
+    def find_number_position(image, target_number: int = None, whitelist: str = None) -> Optional[Tuple[int, int]]:
+        """
+        查找数字在图像中的位置
+        
+        Args:
+            image: PIL.Image 处理后的图像
+            target_number: 目标数字（可选，如果指定则只查找该数字的位置）
+            whitelist: 允许的字符白名单（可选）
+        
+        Returns:
+            tuple: (center_x, center_y) 数字中心位置，未找到返回None
+        """
+        try:
+            import pytesseract
+            import re
+            
+            if whitelist:
+                config = f'--psm 7 --oem 3 -c tessedit_char_whitelist={whitelist}'
+            else:
+                config = '--psm 7 --oem 3'
+            data = pytesseract.image_to_data(
+                image, lang='eng', 
+                config=config, 
+                output_type=pytesseract.Output.DICT
+            )
+            
+            for i in range(len(data['text'])):
+                word = data['text'][i].strip()
+                if not word:
+                    continue
+                
+                if target_number is not None:
+                    match = re.search(r'-?\d+', word)
+                    if match and int(match.group()) == target_number:
+                        left_word = data['left'][i]
+                        top_word = data['top'][i]
+                        width = data['width'][i]
+                        height = data['height'][i]
+                        center_x = left_word + width // 2
+                        center_y = top_word + height // 2
+                        return (center_x, center_y)
+                else:
+                    match = re.search(r'-?\d+', word)
+                    if match:
+                        left_word = data['left'][i]
+                        top_word = data['top'][i]
+                        width = data['width'][i]
+                        height = data['height'][i]
+                        center_x = left_word + width // 2
+                        center_y = top_word + height // 2
+                        return (center_x, center_y)
+            
+            return None
+            
+        except Exception:
+            return None
