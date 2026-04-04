@@ -1,0 +1,86 @@
+# Python
+*.py[cod]
+*.pyo
+*.pyd
+__pycache__/
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.manifest
+*.spec
+!autodoor.spec
+!autodoor_dd.spec
+
+# Virtual Environment
+/venv/
+/.venv/
+env/
+.env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.trae/
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite3
+
+# Test
+/test/
+/tests/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Build outputs
+*.exe
+!tesseract/**/*.exe
+*.pkg
+*.zip
+!tesseract/**/*.zip
+*.dmg
+*.app
+
+# System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# User config
+autodoor_config.json
+
+# Backup files
+*.bak
+/save/
+
+# Documentation (exclude generated docs, keep README)
+/docs/
+/image/
+/script/
+/data/
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+
+# Workflow (keep main workflow)
+/.workflow/
+
+# Git worktrees
+.worktrees/

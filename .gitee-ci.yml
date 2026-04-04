@@ -1,0 +1,41 @@
+# AutoDoor OCR 识别系统 - Gitee 流水线配置
+
+stages:
+  - build_windows
+  - build_macos
+
+# Windows 构建任务
+build_windows:
+  stage: build_windows
+  tags:
+    - windows
+  script:
+    - echo "开始构建 Windows 版本..."
+    - python --version
+    - pip --version
+    - pip install -r requirements.txt pyinstaller
+    - pyinstaller autodoor.spec --noconfirm
+    - echo "Windows 版本构建完成"
+  artifacts:
+    name: autodoor-windows
+    paths:
+      - dist/autodoor/
+    expire_in: 30 days
+
+# macOS 构建任务
+build_macos:
+  stage: build_macos
+  tags:
+    - macos
+  script:
+    - echo "开始构建 macOS 版本..."
+    - python3 --version
+    - pip3 --version
+    - pip3 install -r requirements.txt pyinstaller
+    - pyinstaller autodoor.spec --noconfirm
+    - echo "macOS 版本构建完成"
+  artifacts:
+    name: autodoor-macos
+    paths:
+      - dist/autodoor/
+    expire_in: 30 days
