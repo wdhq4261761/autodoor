@@ -173,6 +173,33 @@ class BehaviorTreeEditor(ctk.CTkFrame):
             on_change=self._on_property_change
         )
         self.property_panel.pack(side="right", fill="y")
+        
+        self.canvas.property_panel = self.property_panel
+        
+        self._bind_global_click_handler()
+    
+    def _bind_global_click_handler(self):
+        """绑定全局点击事件，让点击任何非输入框区域都能触发保存"""
+        def on_global_click(event):
+            focused = self.winfo_toplevel().focus_get()
+            if focused:
+                widget_type = str(type(focused).__name__)
+                if widget_type in ("CTkEntry", "Entry", "CTkTextbox", "Text"):
+                    if event.widget != focused:
+                        self.focus_set()
+        
+        root = self.winfo_toplevel()
+        root.bind("<Button-1>", on_global_click, add="+")
+        
+        def bind_recursive(widget):
+            try:
+                widget.bind("<Button-1>", on_global_click, add="+")
+                for child in widget.winfo_children():
+                    bind_recursive(child)
+            except:
+                pass
+        
+        bind_recursive(root)
     
     def _bind_shortcuts(self):
         """绑定键盘快捷键"""

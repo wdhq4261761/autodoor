@@ -90,11 +90,19 @@ NODE_CONFIG_SCHEMAS = {
         {"key": "code_path", "label": "代码路径", "type": "file", "width": 120, "filetypes": [("所有文件", "*.*"), ("Python脚本", "*.py"), ("批处理", "*.bat;*.cmd"), ("PowerShell", "*.ps1")]},
         {"key": "code_type", "label": "代码类型", "type": "select", "options": ["auto", "python", "batch", "powershell"]},
     ],
+    "AlarmNode": [
+        {"key": "sound_path", "label": "音频文件", "type": "file", "width": 120, "filetypes": [("音频文件", "*.mp3 *.wav *.ogg *.flac"), ("所有文件", "*.*")]},
+        {"key": "volume", "label": "音量(0-100,空用全局)", "type": "number", "min": 0, "max": 100},
+        {"key": "repeat_count", "label": "播放次数", "type": "number", "min": 1},
+        {"key": "interval_ms", "label": "播放间隔(ms)", "type": "number", "min": 0},
+        {"key": "wait_complete", "label": "等待播放完成", "type": "bool"},
+    ],
     "ParallelNode": [
         {"key": "success_policy", "label": "成功策略", "type": "select", "options": ["require_all", "require_one"]},
     ],
     "SequenceNode": [
         {"key": "child_interval", "label": "子节点间隔(ms)", "type": "number", "min": 0},
+        {"key": "continue_on_failure", "label": "失败后继续执行", "type": "bool"},
     ],
     "SelectorNode": [
         {"key": "child_interval", "label": "子节点间隔(ms)", "type": "number", "min": 0},
@@ -118,7 +126,7 @@ COMPOSITE_DECORATOR_FIELDS = [
 ]
 
 CONDITION_NODES = ["OCRConditionNode", "ImageConditionNode", "ColorConditionNode", "NumberConditionNode", "VariableConditionNode"]
-ACTION_NODES = ["KeyPressNode", "MouseClickNode", "MouseMoveNode", "DelayNode", "SetVariableNode", "ScriptNode", "CodeNode"]
+ACTION_NODES = ["KeyPressNode", "MouseClickNode", "MouseMoveNode", "DelayNode", "SetVariableNode", "ScriptNode", "CodeNode", "AlarmNode"]
 COMPOSITE_NODES = ["SequenceNode", "SelectorNode", "ParallelNode"]
 
 
@@ -177,6 +185,14 @@ class TextField(FieldWidget):
         )
         self.entry.pack(fill="x")
         self.entry.bind("<FocusOut>", lambda e: self.on_change(self.key, self.var.get()))
+        self.entry.bind("<Return>", self._on_return)
+    
+    def _on_return(self, event):
+        """回车键处理"""
+        self.on_change(self.key, self.var.get())
+        self.entry.selection_clear()
+        self.master.focus_set()
+        return "break"
     
     def set_value(self, value: Any):
         self.var.set(str(value or ""))
@@ -211,6 +227,7 @@ class NumberField(FieldWidget):
         )
         self.entry.pack(fill="x")
         self.entry.bind("<FocusOut>", lambda e: self._on_change())
+        self.entry.bind("<Return>", self._on_return)
     
     def _on_change(self):
         try:
@@ -222,6 +239,13 @@ class NumberField(FieldWidget):
             self.on_change(self.key, value)
         except ValueError:
             pass
+    
+    def _on_return(self, event):
+        """回车键处理"""
+        self._on_change()
+        self.entry.selection_clear()
+        self.master.focus_set()
+        return "break"
     
     def set_value(self, value: Any):
         if value is not None:
@@ -1000,6 +1024,7 @@ class PropertyPanel(ctk.CTkFrame):
         self.current_node_id: Optional[str] = None
         self.current_node_type: Optional[str] = None
         self.widgets: Dict[str, FieldWidget] = {}
+        self._is_loading: bool = False
         
         self._dark_colors = Theme.get_dark_colors()
         self.configure(
@@ -1010,6 +1035,10 @@ class PropertyPanel(ctk.CTkFrame):
         
         self._create_ui()
         self._bind_click_event()
+    
+    def is_loading(self) -> bool:
+        """检查是否正在加载节点属性"""
+        return self._is_loading
     
     def _bind_click_event(self):
         """绑定点击事件，点击面板时让输入框失去焦点并保存"""
@@ -1155,39 +1184,44 @@ class PropertyPanel(ctk.CTkFrame):
     
     def load_node(self, node_id: str, node_type: str, node_data: Dict[str, Any]):
         """加载节点属性"""
-        if self.current_node_id and self.current_node_id != node_id:
-            self._force_save_focus()
-            self._save_current_values()
+        self._is_loading = True
         
-        self.current_node_id = node_id
-        self.current_node_type = node_type
-        
-        self._clear_content()
-        
-        display_name = node_type.replace("Node", "").replace("Condition", "").replace("Action", "")
-        self.title_label.configure(text="节点属性")
-        self.node_type_label.configure(text=display_name)
-        
-        self._create_base_fields(node_data)
-        
-        schema = NODE_CONFIG_SCHEMAS.get(node_type, [])
-        if schema:
-            self._create_section_title("配置参数")
-            for field in schema:
-                self._create_field(field, node_data.get("config", {}).get(field["key"]))
-        
-        decorator_fields = []
-        if node_type in CONDITION_NODES:
-            decorator_fields = CONDITION_DECORATOR_FIELDS
-        elif node_type in ACTION_NODES:
-            decorator_fields = ACTION_DECORATOR_FIELDS
-        elif node_type in COMPOSITE_NODES:
-            decorator_fields = COMPOSITE_DECORATOR_FIELDS
-        
-        if decorator_fields:
-            self._create_section_title("装饰参数")
-            for field in decorator_fields:
-                self._create_field(field, node_data.get("config", {}).get(field["key"]))
+        try:
+            if self.current_node_id and self.current_node_id != node_id:
+                self._force_save_focus()
+                self._save_current_values()
+            
+            self.current_node_id = node_id
+            self.current_node_type = node_type
+            
+            self._clear_content()
+            
+            display_name = node_type.replace("Node", "").replace("Condition", "").replace("Action", "")
+            self.title_label.configure(text="节点属性")
+            self.node_type_label.configure(text=display_name)
+            
+            self._create_base_fields(node_data)
+            
+            schema = NODE_CONFIG_SCHEMAS.get(node_type, [])
+            if schema:
+                self._create_section_title("配置参数")
+                for field in schema:
+                    self._create_field(field, node_data.get("config", {}).get(field["key"]))
+            
+            decorator_fields = []
+            if node_type in CONDITION_NODES:
+                decorator_fields = CONDITION_DECORATOR_FIELDS
+            elif node_type in ACTION_NODES:
+                decorator_fields = ACTION_DECORATOR_FIELDS
+            elif node_type in COMPOSITE_NODES:
+                decorator_fields = COMPOSITE_DECORATOR_FIELDS
+            
+            if decorator_fields:
+                self._create_section_title("装饰参数")
+                for field in decorator_fields:
+                    self._create_field(field, node_data.get("config", {}).get(field["key"]))
+        finally:
+            self._is_loading = False
     
     def _create_section_title(self, title: str):
         """创建区块标题"""

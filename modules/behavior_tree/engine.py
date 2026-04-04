@@ -25,7 +25,7 @@ def register_adapters() -> None:
         from modules.bt_adapters.variable_adapter import VariableConditionNode
         from modules.bt_adapters.action_adapters import (
             KeyPressNode, MouseClickNode, MouseMoveNode, MouseScrollNode,
-            DelayNode, SetVariableNode, ScriptNode, CodeNode
+            DelayNode, SetVariableNode, ScriptNode, CodeNode, AlarmNode
         )
         
         NODE_TYPE_MAP["OCRConditionNode"] = OCRConditionNode
@@ -41,6 +41,7 @@ def register_adapters() -> None:
         NODE_TYPE_MAP["SetVariableNode"] = SetVariableNode
         NODE_TYPE_MAP["ScriptNode"] = ScriptNode
         NODE_TYPE_MAP["CodeNode"] = CodeNode
+        NODE_TYPE_MAP["AlarmNode"] = AlarmNode
     except ImportError:
         pass
 

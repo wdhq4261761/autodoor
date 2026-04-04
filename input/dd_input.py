@@ -36,8 +36,8 @@ VK_CODE_MAP = {
     'up': 0x26,
     'right': 0x27,
     'down': 0x28,
-    'print_screen': 0x2A,
-    'printscreen': 0x2A,
+    'print_screen': 0x2C,
+    'printscreen': 0x2C,
     'insert': 0x2D,
     'ins': 0x2D,
     'delete': 0x2E,
@@ -57,11 +57,13 @@ VK_CODE_MAP = {
     'f6': 0x75, 'f7': 0x76, 'f8': 0x77, 'f9': 0x78, 'f10': 0x79,
     'f11': 0x7A, 'f12': 0x7B,
     
-    'shift_l': 0x10, 'shiftleft': 0x10, 'shift_r': 0x10, 'shiftright': 0x10,
-    'control_l': 0x11, 'ctrlleft': 0x11, 'ctrl_l': 0x11,
-    'control_r': 0x11, 'ctrlright': 0x11, 'ctrl_r': 0x11,
-    'alt_l': 0x12, 'altleft': 0x12,
-    'alt_r': 0x12, 'altright': 0x12,
+    'shift_l': 0xA0, 'shiftleft': 0xA0,
+    'shift_r': 0xA1, 'shiftright': 0xA1,
+    'control_l': 0xA2, 'ctrlleft': 0xA2, 'ctrl_l': 0xA2,
+    'control_r': 0xA3, 'ctrlright': 0xA3, 'ctrl_r': 0xA3,
+    'alt_l': 0xA4, 'altleft': 0xA4,
+    'alt_r': 0xA5, 'altright': 0xA5,
+    
     'win_l': 0x5B, 'winleft': 0x5B,
     'win_r': 0x5C, 'winright': 0x5C,
     'win': 0x5B,
@@ -291,12 +293,13 @@ class DDVirtualInput(BaseInputController):
             self._log("❌ DD虚拟键盘不可用")
             return False
         
+        # 直接使用DD码，因为DD_todc不支持鼠标按键
         btn_map = {'left': 1, 'right': 4, 'middle': 16}
         btn_code = btn_map.get(button, 1)
         
         try:
             self._dd_dll.DD_btn(btn_code)
-            self._log(f"执行: DD按下鼠标{button}键")
+            self._log(f"执行: DD按下鼠标{button}键 (DD={btn_code})")
             return True
         except Exception as e:
             self._log(f"❌ DD鼠标按下错误: {str(e)}")
@@ -307,12 +310,13 @@ class DDVirtualInput(BaseInputController):
             self._log("❌ DD虚拟键盘不可用")
             return False
         
+        # 直接使用DD码，因为DD_todc不支持鼠标按键
         btn_map = {'left': 2, 'right': 8, 'middle': 32}
         btn_code = btn_map.get(button, 2)
         
         try:
             self._dd_dll.DD_btn(btn_code)
-            self._log(f"执行: DD抬起鼠标{button}键")
+            self._log(f"执行: DD抬起鼠标{button}键 (DD={btn_code})")
             return True
         except Exception as e:
             self._log(f"❌ DD鼠标抬起错误: {str(e)}")

@@ -125,10 +125,12 @@ class CompositeNode(Node):
         self.repeat_count = self.config.get("repeat_count", 1)
         self.timeout_ms = self.config.get("timeout_ms", 0)
         self.child_interval = self.config.get("child_interval", 0)
+        self.continue_on_failure = self.config.get("continue_on_failure", False)
         self._current_retry = 0
         self._current_repeat = 0
         self._start_time: Optional[float] = None
         self._last_child_finish_time: Optional[float] = None
+        self._has_failure: bool = False
     
     def get_children(self) -> List[Node]:
         """获取子节点列表"""
@@ -192,15 +194,18 @@ class CompositeNode(Node):
                 context.log(f"{self.name}: 重试 {self._current_retry}/{self.retry_count}")
                 self._reset_children()
                 self._current_index = 0
+                self._has_failure = False
                 return NodeStatus.RUNNING
             self._current_retry = 0
             self._current_repeat = 0
             self._start_time = None
+            self._has_failure = False
             context.notify_node_status(self.node_id, "failure")
             return NodeStatus.FAILURE
         
         self._reset_children()
         self._current_index = 0
+        self._has_failure = False
         
         if self.repeat_count == -1:
             return NodeStatus.RUNNING
@@ -227,6 +232,7 @@ class CompositeNode(Node):
         self._current_repeat = 0
         self._start_time = None
         self._status = NodeStatus.SUCCESS
+        self._has_failure = False
         for child in self.children:
             child.reset()
     
@@ -536,7 +542,8 @@ class SequenceNode(CompositeNode):
     
     按顺序依次执行子节点：
     - 所有子节点成功才返回成功
-    - 任一子节点失败立即返回失败
+    - 任一子节点失败立即返回失败（默认行为）
+    - 开启 continue_on_failure 后，失败仍继续执行，最终根据是否有失败决定结果
     - 子节点返回 RUNNING 时记录位置并返回 RUNNING
     """
     
@@ -563,6 +570,12 @@ class SequenceNode(CompositeNode):
                 return NodeStatus.RUNNING
             
             if status == NodeStatus.FAILURE:
+                if self.continue_on_failure:
+                    self._has_failure = True
+                    self._current_index += 1
+                    if self.child_interval > 0:
+                        self._last_child_finish_time = time.time() * 1000
+                    continue
                 return NodeStatus.FAILURE
             
             self._current_index += 1
@@ -571,6 +584,10 @@ class SequenceNode(CompositeNode):
         
         self._current_index = 0
         self._last_child_finish_time = None
+        
+        if self._has_failure:
+            return NodeStatus.FAILURE
+        
         return NodeStatus.SUCCESS
 
 

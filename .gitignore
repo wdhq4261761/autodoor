@@ -69,9 +69,10 @@ autodoor_config.json
 /save/
 
 # Documentation (exclude generated docs, keep README)
-/md/
 /docs/
 /image/
+/script/
+/data/
 
 # Temporary files
 *.tmp
@@ -83,5 +84,3 @@ autodoor_config.json
 
 # Git worktrees
 .worktrees/
-script/
-data/

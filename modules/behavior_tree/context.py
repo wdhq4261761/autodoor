@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from utils.screenshot import ScreenshotManager
     from input.controller import InputController
     from core.logging import LoggingManager
+    from modules.alarm import AlarmModule
 
 
 class ExecutionContext:
@@ -41,6 +42,7 @@ class ExecutionContext:
         self.screenshot_manager: "ScreenshotManager" = getattr(app, "screenshot_manager", None)
         self.input_controller: "InputController" = getattr(app, "input_controller", None)
         self.logging_manager: "LoggingManager" = getattr(app, "logging_manager", None)
+        self.alarm_module: "AlarmModule" = getattr(app, "alarm_module", None)
         
         self._is_running = True
         self._is_paused = False
@@ -288,6 +290,38 @@ class ExecutionContext:
             if not self.check_running():
                 break
             time.sleep(0.01)
+    
+    def play_alarm(self, sound_path: Optional[str] = None, volume: Optional[int] = None,
+                   repeat_count: int = 1, interval_ms: int = 0, 
+                   wait_complete: bool = True) -> bool:
+        """
+        播放报警音
+        
+        Args:
+            sound_path: 音频文件路径（None则使用全局默认）
+            volume: 音量（0-100，None则使用全局音量）
+            repeat_count: 重复次数（默认1次）
+            interval_ms: 重复间隔（毫秒）
+            wait_complete: 是否等待播放完成
+        
+        Returns:
+            是否成功播放
+        """
+        if self.alarm_module is None:
+            self.log("报警模块未初始化", "error")
+            return False
+        
+        try:
+            return self.alarm_module.play_custom_alarm(
+                sound_path=sound_path,
+                volume=volume,
+                repeat_count=repeat_count,
+                interval_ms=interval_ms,
+                wait_complete=wait_complete
+            )
+        except Exception as e:
+            self.log(f"播放报警音失败: {e}", "error")
+            return False
     
     def reset(self) -> None:
         """重置上下文"""

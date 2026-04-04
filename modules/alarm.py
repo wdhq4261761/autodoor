@@ -1,6 +1,8 @@
 import os
 import sys
 import tkinter as tk
+import time
+import threading
 from tkinter import filedialog
 
 
@@ -167,3 +169,78 @@ class AlarmModule:
                         pass
         except Exception:
             pass
+    
+    def play_custom_alarm(self, sound_path=None, volume=None, repeat_count=1,
+                         interval_ms=0, wait_complete=True):
+        """
+        播放自定义报警音
+        
+        Args:
+            sound_path: 音频文件路径（None则使用全局默认）
+            volume: 音量（0-100，None则使用全局音量）
+            repeat_count: 重复次数（默认1次）
+            interval_ms: 重复间隔（毫秒）
+            wait_complete: 是否等待播放完成
+        
+        Returns:
+            bool: 是否成功启动播放
+        """
+        if not self.pygame_available:
+            if self.app and hasattr(self.app, 'logging_manager'):
+                self.app.logging_manager.log_message("pygame库未安装，无法播放报警声音")
+            return False
+        
+        # 确定音频文件路径
+        actual_sound_path = sound_path
+        if not actual_sound_path:
+            # 使用全局默认报警音
+            actual_sound_path = self.app.alarm_sound_path.get() if hasattr(self.app, 'alarm_sound_path') else None
+        
+        # 如果还是没有，使用项目默认音频
+        if not actual_sound_path or not os.path.exists(actual_sound_path):
+            actual_sound_path = self.get_default_alarm_sound_path()
+        
+        # 最终检查文件是否存在
+        if not actual_sound_path or not os.path.exists(actual_sound_path):
+            if self.app and hasattr(self.app, 'logging_manager'):
+                self.app.logging_manager.log_message("未找到有效的音频文件")
+            return False
+        
+        # 确定音量
+        actual_volume = volume
+        if actual_volume is None:
+            actual_volume = self.app.alarm_volume.get() if hasattr(self.app, 'alarm_volume') else 70
+        actual_volume = max(0, min(100, actual_volume)) / 100.0  # 转换为0-1范围
+        
+        # 定义播放函数
+        def _play_sound():
+            try:
+                import pygame
+                for i in range(repeat_count):
+                    if i > 0 and interval_ms > 0:
+                        time.sleep(interval_ms / 1000.0)
+                    
+                    pygame.mixer.music.load(actual_sound_path)
+                    pygame.mixer.music.set_volume(actual_volume)
+                    pygame.mixer.music.play()
+                    
+                    if wait_complete or i < repeat_count - 1:
+                        # 等待播放完成
+                        while pygame.mixer.music.get_busy():
+                            time.sleep(0.01)
+                
+                return True
+            except Exception as e:
+                if self.app and hasattr(self.app, 'logging_manager'):
+                    self.app.logging_manager.log_message(f"播放报警音失败: {str(e)}")
+                return False
+        
+        # 根据是否等待播放完成选择执行方式
+        if wait_complete:
+            # 同步播放
+            return _play_sound()
+        else:
+            # 异步播放
+            thread = threading.Thread(target=_play_sound, daemon=True)
+            thread.start()
+            return True

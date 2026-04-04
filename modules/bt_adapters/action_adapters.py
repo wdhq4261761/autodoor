@@ -673,3 +673,59 @@ class ScriptNode(ActionNode):
             "loop": self.config.get("loop", False),
         }
         return data
+
+
+class AlarmNode(ActionNode):
+    """
+    报警动作节点
+    
+    播放报警音效
+    """
+    
+    def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
+        super().__init__(node_id, config)
+    
+    def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
+        sound_path = self.config.get("sound_path", "")
+        volume = self.config.get("volume")
+        repeat_count = self.config.get("repeat_count", 1)
+        interval_ms = self.config.get("interval_ms", 0)
+        wait_complete = self.config.get("wait_complete", True)
+        
+        try:
+            actual_sound_path = sound_path if sound_path else None
+            actual_volume = volume if volume is not None else None
+            
+            success = context.play_alarm(
+                sound_path=actual_sound_path,
+                volume=actual_volume,
+                repeat_count=repeat_count,
+                interval_ms=interval_ms,
+                wait_complete=wait_complete
+            )
+            
+            if success:
+                sound_info = sound_path if sound_path else "默认报警音"
+                volume_info = f"音量{volume}%" if volume is not None else "全局音量"
+                wait_info = "等待完成" if wait_complete else "异步播放"
+                context.log(f"报警节点 {self.name}: 播放 {sound_info}, {volume_info}, {repeat_count}次, {wait_info}")
+                return NodeStatus.SUCCESS
+            else:
+                context.log(f"报警节点 {self.name}: 播放失败")
+                return NodeStatus.FAILURE
+                
+        except Exception as e:
+            context.log(f"报警节点 {self.name}: 执行出错 - {e}")
+            return NodeStatus.FAILURE
+    
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data["config"] = {
+            **self.config,
+            "sound_path": self.config.get("sound_path", ""),
+            "volume": self.config.get("volume"),
+            "repeat_count": self.config.get("repeat_count", 1),
+            "interval_ms": self.config.get("interval_ms", 0),
+            "wait_complete": self.config.get("wait_complete", True),
+        }
+        return data

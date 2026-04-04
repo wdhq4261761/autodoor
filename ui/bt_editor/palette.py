@@ -41,6 +41,7 @@ NODE_CATEGORIES = {
             ("MouseScrollNode", "滚轮", "鼠标滚轮滚动"),
             ("DelayNode", "延时", "等待指定时间"),
             ("SetVariableNode", "设变量", "设置变量值"),
+            ("AlarmNode", "报警", "播放报警音效"),
             ("CodeNode", "代码", "执行外部代码文件"),
             ("ScriptNode", "脚本", "执行Txt脚本文件"),
         ]

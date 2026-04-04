@@ -6,6 +6,7 @@
 
 import tkinter as tk
 from tkinter import ttk
+import tkinter.font as tkFont
 import customtkinter as ctk
 from typing import Dict, List, Optional, Any, Callable
 from enum import Enum
@@ -38,6 +39,7 @@ NODE_CATEGORY_MAP = {
     "MouseScrollNode": "action",
     "DelayNode": "action",
     "SetVariableNode": "action",
+    "AlarmNode": "action",
     "ScriptNode": "action",
     "CodeNode": "action",
 }
@@ -57,6 +59,7 @@ NODE_DISPLAY_NAMES = {
     "MouseScrollNode": "滚轮",
     "DelayNode": "延时",
     "SetVariableNode": "设变量",
+    "AlarmNode": "报警",
     "ScriptNode": "脚本",
     "CodeNode": "代码",
 }
@@ -133,7 +136,11 @@ class NodeItem:
     def update_config(self, key: str, value) -> None:
         """更新配置参数"""
         if key in ["name", "description", "enabled"]:
+            old_value = getattr(self, key, None)
             setattr(self, key, value)
+            
+            if key == "name" and old_value != value:
+                self.redraw()
         else:
             if self.config is None:
                 self.config = {}
@@ -238,8 +245,54 @@ class NodeItem:
         self._update_outline()
     
     def _get_display_name(self) -> str:
-        """获取显示名称"""
-        return NODE_DISPLAY_NAMES.get(self.node_type, self.node_type)
+        """
+        获取显示名称（带文本超框处理）
+        
+        优先级：
+        1. 用户自定义的名称 (self.name)
+        2. 节点类型的中文名称 (NODE_DISPLAY_NAMES)
+        3. 节点类型 (self.node_type)
+        
+        处理逻辑：
+        - 如果文本超长，自动截断并添加省略号
+        - 确保文本不会超出节点边界
+        - 正确处理缩放后的宽度计算
+        """
+        if self.name and self.name.strip():
+            base_name = self.name.strip()
+        else:
+            base_name = NODE_DISPLAY_NAMES.get(self.node_type, self.node_type)
+        
+        available_width = self.width - 48
+        scaled_available_width = self._scale(available_width)
+        
+        font_size = max(8, int(10 * self._zoom))
+        font = tkFont.Font(family="Microsoft YaHei", size=font_size, weight="bold")
+        
+        text_width = font.measure(base_name)
+        
+        if text_width <= scaled_available_width:
+            return base_name
+        
+        ellipsis = "..."
+        ellipsis_width = font.measure(ellipsis)
+        target_width = scaled_available_width - ellipsis_width
+        
+        if target_width <= 0:
+            return ellipsis
+        
+        left, right = 0, len(base_name)
+        while left < right:
+            mid = (left + right + 1) // 2
+            test_text = base_name[:mid]
+            test_width = font.measure(test_text)
+            
+            if test_width <= target_width:
+                left = mid
+            else:
+                right = mid - 1
+        
+        return base_name[:left] + ellipsis
     
     def redraw(self):
         """重绘节点"""
@@ -382,9 +435,11 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
                  on_node_move: Optional[Callable] = None,
                  on_connection_add: Optional[Callable] = None,
                  on_node_deselect: Optional[Callable] = None,
+                 property_panel: Optional[Any] = None,
                  **kwargs):
         super().__init__(master, **kwargs)
         self.app = app
+        self.property_panel = property_panel
         
         self.nodes: Dict[str, NodeItem] = {}
         self.connections: List[tuple] = []
@@ -606,6 +661,9 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
             return
         
         if self._dragging and self._drag_node:
+            if self.property_panel and self.property_panel.is_loading():
+                return
+            
             node = self.nodes[self._drag_node]
             node.move_to(x - self._drag_start[0], y - self._drag_start[1])
             self._redraw_connections()
@@ -784,6 +842,9 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
     
     def add_node(self, node_id: str, node_type: str, x: float, y: float, name: str = "", config: dict = None, enabled: bool = True) -> NodeItem:
         """添加节点"""
+        if not name:
+            name = NODE_DISPLAY_NAMES.get(node_type, node_type)
+        
         node = NodeItem(self.canvas, node_id, node_type, x, y, name, config, enabled, self.zoom, self.pan_x, self.pan_y)
         self.nodes[node_id] = node
         return node
@@ -807,6 +868,12 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
                 if c[0] != node_id and c[1] != node_id
             ]
             self._redraw_connections()
+    
+    def redraw_node(self, node_id: str):
+        """重绘指定节点"""
+        if node_id in self.nodes:
+            node = self.nodes[node_id]
+            node.redraw()
     
     def add_connection(self, parent_id: str, child_id: str):
         """添加连接线"""
