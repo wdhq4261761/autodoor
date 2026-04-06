@@ -112,8 +112,9 @@ class Blackboard:
             for callback in self._callbacks[key]:
                 try:
                     callback(key, old_value, new_value)
-                except Exception:
-                    pass
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
     
     def to_dict(self) -> Dict[str, Any]:
         """导出为字典"""

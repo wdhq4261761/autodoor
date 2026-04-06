@@ -13,6 +13,7 @@ from enum import Enum
 import math
 
 from ui.theme import Theme
+from ui.bt_editor.constants import NODE_CATEGORY_MAP, NODE_DISPLAY_NAMES
 
 
 class NodeExecutionStatus(Enum):
@@ -23,46 +24,6 @@ class NodeExecutionStatus(Enum):
     FAILURE = "failure"
     ABORTED = "aborted"
 
-
-NODE_CATEGORY_MAP = {
-    "SequenceNode": "composite",
-    "SelectorNode": "composite",
-    "ParallelNode": "composite",
-    "OCRConditionNode": "condition",
-    "ImageConditionNode": "condition",
-    "ColorConditionNode": "condition",
-    "NumberConditionNode": "condition",
-    "VariableConditionNode": "condition",
-    "KeyPressNode": "action",
-    "MouseClickNode": "action",
-    "MouseMoveNode": "action",
-    "MouseScrollNode": "action",
-    "DelayNode": "action",
-    "SetVariableNode": "action",
-    "AlarmNode": "action",
-    "ScriptNode": "action",
-    "CodeNode": "action",
-}
-
-NODE_DISPLAY_NAMES = {
-    "SequenceNode": "顺序",
-    "SelectorNode": "选择",
-    "ParallelNode": "并行",
-    "OCRConditionNode": "OCR检测",
-    "ImageConditionNode": "图像匹配",
-    "ColorConditionNode": "颜色检测",
-    "NumberConditionNode": "数字比较",
-    "VariableConditionNode": "变量判断",
-    "KeyPressNode": "按键",
-    "MouseClickNode": "点击",
-    "MouseMoveNode": "移动",
-    "MouseScrollNode": "滚轮",
-    "DelayNode": "延时",
-    "SetVariableNode": "设变量",
-    "AlarmNode": "报警",
-    "ScriptNode": "脚本",
-    "CodeNode": "代码",
-}
 
 STATUS_COLORS = {
     NodeExecutionStatus.IDLE: None,
@@ -433,6 +394,7 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
     
     def __init__(self, master, app, on_node_select: Optional[Callable] = None,
                  on_node_move: Optional[Callable] = None,
+                 on_nodes_move: Optional[Callable] = None,
                  on_connection_add: Optional[Callable] = None,
                  on_node_deselect: Optional[Callable] = None,
                  property_panel: Optional[Any] = None,
@@ -440,6 +402,8 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         super().__init__(master, **kwargs)
         self.app = app
         self.property_panel = property_panel
+        
+        self._node_counter = 0
         
         self.nodes: Dict[str, NodeItem] = {}
         self.connections: List[tuple] = []
@@ -449,6 +413,7 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         self.selected_connection: Optional[tuple] = None
         self.on_node_select = on_node_select
         self.on_node_move = on_node_move
+        self.on_nodes_move = on_nodes_move
         self.on_connection_add = on_connection_add
         self.on_node_deselect = on_node_deselect
         
@@ -460,10 +425,22 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         self._drag_node: Optional[str] = None
         self._drag_start = (0, 0)
         self._drag_start_pos = (0, 0)
+        self._drag_start_positions: Dict[str, tuple] = {}
         
         self._panning = False
         self._pan_start = (0, 0)
         self._pan_start_offset = (0, 0)
+        
+        self._right_panning = False
+        self._right_pan_start = (0, 0)
+        self._right_pan_start_offset = (0, 0)
+        self._right_pan_moved = False
+        self._right_pan_threshold = 5
+        
+        self._selecting = False
+        self._selection_start = (0, 0)
+        self._selection_box = None
+        self._selection_append = False
         
         self._connecting = False
         self._connect_start_node: Optional[str] = None
@@ -523,6 +500,8 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
         self.canvas.bind("<MouseWheel>", self._on_scroll)
         self.canvas.bind("<Button-3>", self._on_right_click)
+        self.canvas.bind("<B3-Motion>", self._on_right_drag)
+        self.canvas.bind("<ButtonRelease-3>", self._on_right_release)
         self.canvas.bind("<Double-Button-1>", self._on_double_click)
         self.canvas.bind("<Control-Button-1>", self._on_ctrl_click)
         self.canvas.bind("<Configure>", self._on_resize)
@@ -558,11 +537,23 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
                 return
             
             if node.contains_point(x, y):
-                self._select_node(node_id)
-                self._dragging = True
-                self._drag_node = node_id
-                self._drag_start = (x - node.x, y - node.y)
-                self._drag_start_pos = (node.x, node.y)
+                if node_id in self.selected_nodes:
+                    self._dragging = True
+                    self._drag_node = node_id
+                    self._drag_start = (x - node.x, y - node.y)
+                    self._drag_start_pos = (node.x, node.y)
+                    self._drag_start_positions = {}
+                    for nid in self.selected_nodes:
+                        if nid in self.nodes:
+                            n = self.nodes[nid]
+                            self._drag_start_positions[nid] = (n.x, n.y)
+                else:
+                    self._select_node(node_id)
+                    self._dragging = True
+                    self._drag_node = node_id
+                    self._drag_start = (x - node.x, y - node.y)
+                    self._drag_start_pos = (node.x, node.y)
+                    self._drag_start_positions = {node_id: (node.x, node.y)}
                 return
         
         clicked_connection = self._find_connection_at(x, y)
@@ -571,9 +562,9 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
             return
         
         self._deselect_all()
-        self._panning = True
-        self._pan_start = (event.x, event.y)
-        self._pan_start_offset = (self.pan_x, self.pan_y)
+        self._selecting = True
+        self._selection_start = (x, y)
+        self._selection_append = False
     
     def _on_ctrl_click(self, event):
         """Ctrl+点击事件（多选）"""
@@ -660,12 +651,26 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
                         node.highlight_port("input", False)
             return
         
+        if self._selecting:
+            self._update_selection_box(x, y)
+            return
+        
         if self._dragging and self._drag_node:
             if self.property_panel and self.property_panel.is_loading():
                 return
             
-            node = self.nodes[self._drag_node]
-            node.move_to(x - self._drag_start[0], y - self._drag_start[1])
+            dx = x - self._drag_start[0] - self._drag_start_pos[0]
+            dy = y - self._drag_start[1] - self._drag_start_pos[1]
+            
+            if len(self.selected_nodes) > 1 and self._drag_start_positions:
+                for node_id in self.selected_nodes:
+                    if node_id in self.nodes and node_id in self._drag_start_positions:
+                        start_x, start_y = self._drag_start_positions[node_id]
+                        self.nodes[node_id].move_to(start_x + dx, start_y + dy)
+            else:
+                node = self.nodes[self._drag_node]
+                node.move_to(x - self._drag_start[0], y - self._drag_start[1])
+            
             self._redraw_connections()
             return
         
@@ -691,13 +696,28 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
             self._cancel_connecting()
             return
         
-        if self._dragging and self._drag_node and self.on_node_move:
-            node = self.nodes[self._drag_node]
-            self.on_node_move(
-                self._drag_node,
-                self._drag_start_pos[0], self._drag_start_pos[1],
-                node.x, node.y
-            )
+        if self._selecting:
+            self._finish_selection(x, y)
+            return
+        
+        if self._dragging and self._drag_node:
+            if len(self.selected_nodes) > 1 and self._drag_start_positions and self.on_nodes_move:
+                old_positions = {}
+                new_positions = {}
+                for node_id in self.selected_nodes:
+                    if node_id in self.nodes and node_id in self._drag_start_positions:
+                        node = self.nodes[node_id]
+                        old_positions[node_id] = self._drag_start_positions[node_id]
+                        new_positions[node_id] = (node.x, node.y)
+                
+                self.on_nodes_move(old_positions, new_positions)
+            elif self.on_node_move:
+                node = self.nodes[self._drag_node]
+                self.on_node_move(
+                    self._drag_node,
+                    self._drag_start_pos[0], self._drag_start_pos[1],
+                    node.x, node.y
+                )
         
         self._dragging = False
         self._drag_node = None
@@ -726,7 +746,42 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         self._draw_grid()
     
     def _on_right_click(self, event):
-        """右键菜单"""
+        """右键点击事件"""
+        self._right_panning = True
+        self._right_pan_start = (event.x, event.y)
+        self._right_pan_start_offset = (self.pan_x, self.pan_y)
+        self._right_pan_moved = False
+    
+    def _on_right_drag(self, event):
+        """右键拖动事件"""
+        if not self._right_panning:
+            return
+        
+        dx = event.x - self._right_pan_start[0]
+        dy = event.y - self._right_pan_start[1]
+        distance = math.sqrt(dx*dx + dy*dy)
+        
+        if not self._right_pan_moved and distance >= self._right_pan_threshold:
+            self._right_pan_moved = True
+        
+        if self._right_pan_moved:
+            self.pan_x = self._right_pan_start_offset[0] + dx
+            self.pan_y = self._right_pan_start_offset[1] + dy
+            self._redraw_all()
+            self._draw_grid()
+    
+    def _on_right_release(self, event):
+        """右键释放事件"""
+        if not self._right_panning:
+            return
+        
+        self._right_panning = False
+        
+        if not self._right_pan_moved:
+            self._show_context_menu(event)
+    
+    def _show_context_menu(self, event):
+        """显示右键菜单"""
         x = (self.canvas.canvasx(event.x) - self.pan_x) / self.zoom
         y = (self.canvas.canvasy(event.y) - self.pan_y) / self.zoom
         
@@ -734,7 +789,12 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
                        fg=self._dark_colors['text_primary'],
                        activebackground=self._dark_colors['bg_tertiary'])
         
-        if self.selected_node:
+        if self.selected_nodes:
+            menu.add_command(label=f"删除 {len(self.selected_nodes)} 个节点", 
+                           command=lambda: self._delete_selected_nodes())
+            menu.add_command(label=f"复制 {len(self.selected_nodes)} 个节点", 
+                           command=self._copy_selected_nodes_to_clipboard)
+        elif self.selected_node:
             menu.add_command(label="删除节点", command=lambda: self.remove_node(self.selected_node))
             menu.add_command(label="复制节点", command=lambda: self._copy_node(self.selected_node))
         elif self.selected_connection:
@@ -973,6 +1033,14 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         self._panning = False
         self._pan_start = (0, 0)
         self._pan_start_offset = (0, 0)
+        self._right_panning = False
+        self._right_pan_start = (0, 0)
+        self._right_pan_start_offset = (0, 0)
+        self._right_pan_moved = False
+        self._selecting = False
+        self._selection_start = (0, 0)
+        self._selection_box = None
+        self._selection_append = False
         self._connecting = False
         self._connect_start_node = None
         self._connect_start_pos = None
@@ -1162,37 +1230,6 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
         
         return positions
     
-    def _calculate_positions(self, nodes_data: Dict, root_id: str) -> Dict[str, tuple]:
-        """计算节点位置"""
-        positions = {}
-        y_offset = 100
-        x_center = 400
-        
-        def layout_node(node_id: str, x: float, y: float, width: float):
-            positions[node_id] = (x, y)
-            
-            if node_id not in nodes_data:
-                return
-            
-            node_data = nodes_data[node_id]
-            children = node_data.get("children", [])
-            
-            if not children:
-                return
-            
-            child_width = width / len(children)
-            start_x = x - width/2 + child_width/2
-            
-            for i, child_id in enumerate(children):
-                child_x = start_x + i * child_width
-                layout_node(child_id, child_x, y + y_offset, child_width)
-            
-            if "child" in node_data:
-                layout_node(node_data["child"], x, y + y_offset, width)
-        
-        layout_node(root_id, x_center, 60, 600)
-        return positions
-    
     def get_tree_data(self) -> Dict[str, Any]:
         """获取行为树数据"""
         nodes_data = {}
@@ -1239,3 +1276,157 @@ class BehaviorTreeCanvas(ctk.CTkFrame):
             "nodes": nodes_data,
             "connections": [{"parent_id": p, "child_id": c} for p, c in self.connections]
         }
+    
+    def _delete_selected_nodes(self):
+        """删除所有选中的节点（由外部调用）"""
+        if not self.selected_nodes:
+            return
+        
+        for node_id in list(self.selected_nodes):
+            if node_id in self.nodes:
+                self.remove_node(node_id)
+    
+    def _copy_selected_nodes_to_clipboard(self):
+        """复制选中的节点到剪贴板（由外部调用）"""
+        if not self.selected_nodes:
+            return None
+        
+        import copy
+        
+        min_x = min(self.nodes[nid].x for nid in self.selected_nodes if nid in self.nodes)
+        min_y = min(self.nodes[nid].y for nid in self.selected_nodes if nid in self.nodes)
+        
+        nodes_data = []
+        relative_positions = {}
+        
+        for node_id in self.selected_nodes:
+            if node_id not in self.nodes:
+                continue
+            node = self.nodes[node_id]
+            nodes_data.append({
+                'id': node_id,
+                'type': node.node_type,
+                'name': node.name,
+                'config': copy.deepcopy(node.config) if node.config else {},
+                'enabled': node.enabled
+            })
+            relative_positions[node_id] = (node.x - min_x, node.y - min_y)
+        
+        connections = [
+            (parent_id, child_id)
+            for parent_id, child_id in self.connections
+            if parent_id in self.selected_nodes and child_id in self.selected_nodes
+        ]
+        
+        return {
+            'nodes': nodes_data,
+            'connections': connections,
+            'relative_positions': relative_positions
+        }
+    
+    def paste_nodes(self, clipboard_data: Dict[str, Any], offset_x: float = 50, offset_y: float = 50) -> List[str]:
+        """粘贴节点"""
+        if not clipboard_data or not clipboard_data.get('nodes'):
+            return []
+        
+        import copy
+        
+        nodes_data = clipboard_data['nodes']
+        connections = clipboard_data.get('connections', [])
+        relative_positions = clipboard_data.get('relative_positions', {})
+        
+        id_map = {}
+        new_node_ids = []
+        
+        for node_data in nodes_data:
+            old_id = node_data['id']
+            self._node_counter += 1
+            new_id = f"node_{self._node_counter}"
+            id_map[old_id] = new_id
+            
+            rel_x, rel_y = relative_positions.get(old_id, (0, 0))
+            new_x = rel_x + offset_x
+            new_y = rel_y + offset_y
+            
+            self.add_node(
+                new_id,
+                node_data['type'],
+                new_x, new_y,
+                node_data.get('name', ''),
+                node_data.get('config', {}),
+                node_data.get('enabled', True)
+            )
+            new_node_ids.append(new_id)
+        
+        for old_parent, old_child in connections:
+            new_parent = id_map.get(old_parent)
+            new_child = id_map.get(old_child)
+            if new_parent and new_child:
+                self.add_connection(new_parent, new_child)
+        
+        return new_node_ids
+    
+    def _update_selection_box(self, x: float, y: float):
+        """更新选择框"""
+        if self._selection_box:
+            self.canvas.delete(self._selection_box)
+        
+        start_x, start_y = self._selection_start
+        
+        screen_start_x = start_x * self.zoom + self.pan_x
+        screen_start_y = start_y * self.zoom + self.pan_y
+        screen_end_x = x * self.zoom + self.pan_x
+        screen_end_y = y * self.zoom + self.pan_y
+        
+        self._selection_box = self.canvas.create_rectangle(
+            screen_start_x, screen_start_y,
+            screen_end_x, screen_end_y,
+            outline=self._dark_colors.get('node_selected', '#FFD700'),
+            width=2,
+            dash=(5, 3),
+            tags="selection_box"
+        )
+    
+    def _finish_selection(self, x: float, y: float):
+        """完成框选"""
+        if self._selection_box:
+            self.canvas.delete(self._selection_box)
+            self._selection_box = None
+        
+        selected_ids = self._get_nodes_in_selection_box(
+            self._selection_start[0], self._selection_start[1],
+            x, y
+        )
+        
+        if not self._selection_append:
+            self._deselect_all()
+        
+        for node_id in selected_ids:
+            if node_id not in self.selected_nodes:
+                self.selected_nodes.append(node_id)
+                self.nodes[node_id].set_selected(True)
+        
+        if self.selected_nodes:
+            self.selected_node = self.selected_nodes[0]
+            if self.on_node_select and len(self.selected_nodes) == 1:
+                node = self.nodes[self.selected_node]
+                self.on_node_select(self.selected_node, node.node_type)
+        
+        self._selecting = False
+    
+    def _get_nodes_in_selection_box(self, x1: float, y1: float, 
+                                     x2: float, y2: float) -> List[str]:
+        """获取选择框内的所有节点"""
+        selected = []
+        
+        min_x, max_x = min(x1, x2), max(x1, x2)
+        min_y, max_y = min(y1, y2), max(y1, y2)
+        
+        for node_id, node in self.nodes.items():
+            nx1, ny1, nx2, ny2 = node.get_bounds()
+            
+            if not (nx2 < min_x or nx1 > max_x or 
+                    ny2 < min_y or ny1 > max_y):
+                selected.append(node_id)
+        
+        return selected

@@ -82,8 +82,9 @@ class ExecutionContext:
         if self._on_node_status:
             try:
                 self._on_node_status(node_id, status)
-            except Exception:
-                pass
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
     
     def start(self) -> None:
         """开始执行"""

@@ -58,6 +58,52 @@ class AddNodeCommand(Command):
 
 
 @dataclass
+class AddNodesCommand(Command):
+    """批量添加节点命令"""
+    
+    canvas: Any = None
+    nodes_data: List[Dict[str, Any]] = field(default_factory=list)
+    connections: List[tuple] = field(default_factory=list)
+    new_node_ids: List[str] = field(default_factory=list)
+    
+    description: str = "批量添加节点"
+    
+    def execute(self) -> bool:
+        if not self.canvas or not hasattr(self.canvas, 'add_node'):
+            return False
+        
+        self.new_node_ids = []
+        
+        for node_data in self.nodes_data:
+            node_id = node_data['id']
+            self.canvas.add_node(
+                node_id,
+                node_data['type'],
+                node_data['x'],
+                node_data['y'],
+                node_data.get('name', ''),
+                node_data.get('config', {}),
+                node_data.get('enabled', True)
+            )
+            self.new_node_ids.append(node_id)
+        
+        for parent_id, child_id in self.connections:
+            if hasattr(self.canvas, 'add_connection'):
+                self.canvas.add_connection(parent_id, child_id)
+        
+        return True
+    
+    def undo(self) -> bool:
+        if not self.canvas or not hasattr(self.canvas, 'remove_node'):
+            return False
+        
+        for node_id in self.new_node_ids:
+            self.canvas.remove_node(node_id)
+        
+        return True
+
+
+@dataclass
 class RemoveNodeCommand(Command):
     """删除节点命令"""
     
@@ -77,6 +123,9 @@ class RemoveNodeCommand(Command):
                     "type": node.node_type,
                     "x": node.x,
                     "y": node.y,
+                    "name": getattr(node, 'name', ''),
+                    "config": deepcopy(getattr(node, 'config', {})),
+                    "enabled": getattr(node, 'enabled', True)
                 }
                 self.connections = [
                     c for c in self.canvas.connections 
@@ -92,12 +141,80 @@ class RemoveNodeCommand(Command):
                 self.node_data["id"],
                 self.node_data["type"],
                 self.node_data["x"],
-                self.node_data["y"]
+                self.node_data["y"],
+                self.node_data.get("name", ""),
+                self.node_data.get("config", {}),
+                self.node_data.get("enabled", True)
             )
             for parent_id, child_id in self.connections:
                 self.canvas.add_connection(parent_id, child_id)
             return True
         return False
+
+
+@dataclass
+class RemoveNodesCommand(Command):
+    """批量删除节点命令"""
+    
+    canvas: Any = None
+    node_ids: List[str] = field(default_factory=list)
+    nodes_data: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    connections: List[tuple] = field(default_factory=list)
+    
+    description: str = "批量删除节点"
+    
+    def execute(self) -> bool:
+        if not self.canvas or not hasattr(self.canvas, 'remove_node'):
+            return False
+        
+        self.nodes_data = {}
+        self.connections = []
+        
+        node_set = set(self.node_ids)
+        
+        for node_id in self.node_ids:
+            if node_id in self.canvas.nodes:
+                node = self.canvas.nodes[node_id]
+                self.nodes_data[node_id] = {
+                    "id": node.node_id,
+                    "type": node.node_type,
+                    "x": node.x,
+                    "y": node.y,
+                    "name": getattr(node, 'name', ''),
+                    "config": deepcopy(getattr(node, 'config', {})),
+                    "enabled": getattr(node, 'enabled', True)
+                }
+        
+        self.connections = [
+            c for c in self.canvas.connections 
+            if c[0] in node_set or c[1] in node_set
+        ]
+        
+        for node_id in self.node_ids:
+            self.canvas.remove_node(node_id)
+        
+        return True
+    
+    def undo(self) -> bool:
+        if not self.canvas or not hasattr(self.canvas, 'add_node'):
+            return False
+        
+        for node_id, node_data in self.nodes_data.items():
+            self.canvas.add_node(
+                node_id,
+                node_data["type"],
+                node_data["x"],
+                node_data["y"],
+                node_data.get("name", ""),
+                node_data.get("config", {}),
+                node_data.get("enabled", True)
+            )
+        
+        for parent_id, child_id in self.connections:
+            if parent_id in self.canvas.nodes and child_id in self.canvas.nodes:
+                self.canvas.add_connection(parent_id, child_id)
+        
+        return True
 
 
 @dataclass
@@ -130,6 +247,44 @@ class MoveNodeCommand(Command):
                 self.canvas._redraw_connections()
             return True
         return False
+
+
+@dataclass
+class MoveNodesCommand(Command):
+    """批量移动节点命令"""
+    
+    canvas: Any = None
+    node_ids: List[str] = field(default_factory=list)
+    old_positions: Dict[str, tuple] = field(default_factory=dict)
+    new_positions: Dict[str, tuple] = field(default_factory=dict)
+    
+    description: str = "批量移动节点"
+    
+    def execute(self) -> bool:
+        if not self.canvas or not hasattr(self.canvas, 'nodes'):
+            return False
+        
+        for node_id, (new_x, new_y) in self.new_positions.items():
+            if node_id in self.canvas.nodes:
+                self.canvas.nodes[node_id].move_to(new_x, new_y)
+        
+        if hasattr(self.canvas, '_redraw_connections'):
+            self.canvas._redraw_connections()
+        
+        return True
+    
+    def undo(self) -> bool:
+        if not self.canvas or not hasattr(self.canvas, 'nodes'):
+            return False
+        
+        for node_id, (old_x, old_y) in self.old_positions.items():
+            if node_id in self.canvas.nodes:
+                self.canvas.nodes[node_id].move_to(old_x, old_y)
+        
+        if hasattr(self.canvas, '_redraw_connections'):
+            self.canvas._redraw_connections()
+        
+        return True
 
 
 @dataclass

@@ -7,6 +7,7 @@
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from modules.behavior_tree.nodes import ConditionNode, NodeStatus
+from modules.bt_adapters.image_utils import ImagePreprocessor
 
 if TYPE_CHECKING:
     from modules.behavior_tree.context import ExecutionContext
@@ -35,6 +36,8 @@ class NumberConditionNode(ConditionNode):
         position_key = self.config.get("position_key") or "last_detection_position"
         min_confidence = self.config.get("min_confidence", 50)
         preprocess_mode = self.config.get("preprocess_mode", "普通文本")
+        mode_map = {"普通文本": "standard", "艺术字": "enhanced"}
+        image_mode = mode_map.get(preprocess_mode, "standard")
         
         try:
             screenshot = context.get_screenshot(region)
@@ -43,7 +46,7 @@ class NumberConditionNode(ConditionNode):
                 context.log(f"数字节点 {self.name}: 截图失败")
                 return NodeStatus.FAILURE
             
-            processed_image = self._preprocess_image(screenshot, preprocess_mode)
+            processed_image = ImagePreprocessor.preprocess(screenshot, image_mode)
             if processed_image is None:
                 context.log(f"数字节点 {self.name}: 图像预处理失败")
                 return NodeStatus.FAILURE
@@ -86,66 +89,6 @@ class NumberConditionNode(ConditionNode):
         except Exception as e:
             context.log(f"数字节点: 执行出错 - {e}")
             return NodeStatus.FAILURE
-    
-    def _preprocess_image(self, image, mode: str = "普通文本"):
-        """
-        图像预处理 - 根据模式增强数字识别精度
-        
-        Args:
-            image: PIL.Image 原始图像
-            mode: 预处理模式
-                - "普通文本": 标准预处理，适用于普通文本数字
-                - "艺术字": 激进预处理，适用于粗体、彩色、艺术字数字
-            
-        Returns:
-            PIL.Image: 处理后的图像
-        """
-        try:
-            from PIL import ImageEnhance, ImageFilter
-            import numpy as np
-            
-            image = image.convert('L')
-            
-            if mode == "艺术字":
-                img_array = np.array(image)
-                background = np.mean(img_array)
-                if background < 128:
-                    image = Image.eval(image, lambda x: 255 - x)
-                
-                enhancer = ImageEnhance.Contrast(image)
-                image = enhancer.enhance(2.5)
-                
-                image = image.filter(ImageFilter.SHARPEN)
-                image = image.filter(ImageFilter.SHARPEN)
-                
-                image = image.filter(ImageFilter.MedianFilter(size=3))
-                
-                image = image.point(lambda p: p > 150 and 255)
-            else:
-                enhancer = ImageEnhance.Contrast(image)
-                image = enhancer.enhance(1.5)
-                
-                image = image.filter(ImageFilter.SHARPEN)
-                
-                image = image.point(lambda p: p > 128 and 255)
-            
-            return image
-        except Exception as e:
-            return None
-    
-    def _parse_region(self, region_config) -> tuple:
-        if region_config is None:
-            return (0, 0, 100, 100)
-        elif isinstance(region_config, (list, tuple)):
-            return tuple(region_config)
-        elif isinstance(region_config, str):
-            try:
-                parts = [int(x.strip()) for x in region_config.split(",")]
-                if len(parts) == 4:
-                    return tuple(parts)
-            except (ValueError, AttributeError):
-                pass
-        return (0, 0, 100, 100)
     
     def _parse_compare_mode(self, mode: str) -> str:
         mode_map = {

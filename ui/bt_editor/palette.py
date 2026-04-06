@@ -8,45 +8,10 @@ import customtkinter as ctk
 from typing import Dict, List, Callable, Optional
 
 from ui.theme import Theme
+from ui.bt_editor.constants import build_node_categories
 
 
-NODE_CATEGORIES = {
-    "组合节点": {
-        "icon": "◇",
-        "color": Theme.NODE_COLORS['composite'],
-        "nodes": [
-            ("SequenceNode", "顺序", "按顺序执行子节点"),
-            ("SelectorNode", "选择", "选择第一个成功的子节点"),
-            ("ParallelNode", "并行", "同时执行所有子节点"),
-        ]
-    },
-    "条件节点": {
-        "icon": "◇",
-        "color": Theme.NODE_COLORS['condition'],
-        "nodes": [
-            ("OCRConditionNode", "OCR检测", "检测文字内容"),
-            ("ImageConditionNode", "图像匹配", "匹配图像模板"),
-            ("ColorConditionNode", "颜色检测", "检测颜色值"),
-            ("NumberConditionNode", "数字比较", "比较数值大小"),
-            ("VariableConditionNode", "变量判断", "判断变量值"),
-        ]
-    },
-    "动作节点": {
-        "icon": "◆",
-        "color": Theme.NODE_COLORS['action'],
-        "nodes": [
-            ("KeyPressNode", "按键", "模拟键盘按键"),
-            ("MouseClickNode", "点击", "模拟鼠标点击"),
-            ("MouseMoveNode", "移动", "移动鼠标位置"),
-            ("MouseScrollNode", "滚轮", "鼠标滚轮滚动"),
-            ("DelayNode", "延时", "等待指定时间"),
-            ("SetVariableNode", "设变量", "设置变量值"),
-            ("AlarmNode", "报警", "播放报警音效"),
-            ("CodeNode", "代码", "执行外部代码文件"),
-            ("ScriptNode", "脚本", "执行Txt脚本文件"),
-        ]
-    },
-}
+NODE_CATEGORIES = build_node_categories(Theme.NODE_COLORS)
 
 
 class NodeButton(ctk.CTkFrame):

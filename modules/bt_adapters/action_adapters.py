@@ -246,7 +246,7 @@ class MouseMoveNode(ActionNode):
             context.log(f"鼠标移动节点 {self.name}: 执行出错 - {e}")
             try:
                 context.input_controller.mouse_up(drag_button)
-            except:
+            except (AttributeError, RuntimeError):
                 pass
             return NodeStatus.FAILURE
     
@@ -379,12 +379,6 @@ class SetVariableNode(ActionNode):
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
-    
-    def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
-        variable_name = self.config.get("variable_name", "")
-        value = self.config.get("value")
-        value_type = self.config.get("value_type", "static")
-        self.operation = self.config.get("operation", "set")
     
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
         variable_name = self.config.get("variable_name", "")
@@ -577,7 +571,12 @@ class CodeNode(ActionNode):
         if self._process is not None:
             try:
                 self._process.terminate()
-            except:
+                try:
+                    self._process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    self._process.kill()
+                    self._process.wait(timeout=1)
+            except (OSError, subprocess.SubprocessError):
                 pass
         self._process = None
         self._code_started = False
@@ -586,6 +585,9 @@ class CodeNode(ActionNode):
         if hasattr(self, '_stdout_queue'):
             delattr(self, '_stdout_queue')
             delattr(self, '_stderr_queue')
+        if hasattr(self, '_stdout_thread'):
+            delattr(self, '_stdout_thread')
+            delattr(self, '_stderr_thread')
     
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
@@ -688,7 +690,6 @@ class AlarmNode(ActionNode):
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
         sound_path = self.config.get("sound_path", "")
         volume = self.config.get("volume")
-        repeat_count = self.config.get("repeat_count", 1)
         interval_ms = self.config.get("interval_ms", 0)
         wait_complete = self.config.get("wait_complete", True)
         
@@ -699,7 +700,7 @@ class AlarmNode(ActionNode):
             success = context.play_alarm(
                 sound_path=actual_sound_path,
                 volume=actual_volume,
-                repeat_count=repeat_count,
+                repeat_count=self.repeat_count,
                 interval_ms=interval_ms,
                 wait_complete=wait_complete
             )
@@ -708,7 +709,8 @@ class AlarmNode(ActionNode):
                 sound_info = sound_path if sound_path else "默认报警音"
                 volume_info = f"音量{volume}%" if volume is not None else "全局音量"
                 wait_info = "等待完成" if wait_complete else "异步播放"
-                context.log(f"报警节点 {self.name}: 播放 {sound_info}, {volume_info}, {repeat_count}次, {wait_info}")
+                repeat_info = "无限循环" if self.repeat_count == -1 else f"{self.repeat_count}次"
+                context.log(f"报警节点 {self.name}: 播放 {sound_info}, {volume_info}, {repeat_info}, {wait_info}")
                 return NodeStatus.SUCCESS
             else:
                 context.log(f"报警节点 {self.name}: 播放失败")
@@ -724,7 +726,6 @@ class AlarmNode(ActionNode):
             **self.config,
             "sound_path": self.config.get("sound_path", ""),
             "volume": self.config.get("volume"),
-            "repeat_count": self.config.get("repeat_count", 1),
             "interval_ms": self.config.get("interval_ms", 0),
             "wait_complete": self.config.get("wait_complete", True),
         }

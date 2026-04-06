@@ -87,20 +87,6 @@ class ImageConditionNode(ConditionNode):
             context.log(f"图像节点 {self.name}: 执行出错 - {e}")
             return NodeStatus.FAILURE
     
-    def _parse_region(self, region_config) -> tuple:
-        if region_config is None:
-            return (0, 0, 100, 100)
-        elif isinstance(region_config, (list, tuple)):
-            return tuple(region_config)
-        elif isinstance(region_config, str):
-            try:
-                parts = [int(x.strip()) for x in region_config.split(",")]
-                if len(parts) == 4:
-                    return tuple(parts)
-            except (ValueError, AttributeError):
-                pass
-        return (0, 0, 100, 100)
-    
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
         data["config"] = {

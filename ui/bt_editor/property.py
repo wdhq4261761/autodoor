@@ -11,6 +11,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 
 from ui.theme import Theme
+from ui.bt_editor.constants import CONDITION_NODES, ACTION_NODES, COMPOSITE_NODES
 
 
 NODE_CONFIG_SCHEMAS = {
@@ -93,8 +94,7 @@ NODE_CONFIG_SCHEMAS = {
     "AlarmNode": [
         {"key": "sound_path", "label": "音频文件", "type": "file", "width": 120, "filetypes": [("音频文件", "*.mp3 *.wav *.ogg *.flac"), ("所有文件", "*.*")]},
         {"key": "volume", "label": "音量(0-100,空用全局)", "type": "number", "min": 0, "max": 100},
-        {"key": "repeat_count", "label": "播放次数", "type": "number", "min": 1},
-        {"key": "interval_ms", "label": "播放间隔(ms)", "type": "number", "min": 0},
+        {"key": "interval_ms", "label": "播放间隔(ms)", "type": "number", "min": 0, "default": 0},
         {"key": "wait_complete", "label": "等待播放完成", "type": "bool"},
     ],
     "ParallelNode": [
@@ -111,23 +111,19 @@ NODE_CONFIG_SCHEMAS = {
 
 CONDITION_DECORATOR_FIELDS = [
     {"key": "invert", "label": "结果取反", "type": "bool"},
-    {"key": "retry_count", "label": "失败重试次数", "type": "number", "min": 0, "max": 10},
+    {"key": "retry_count", "label": "失败重试次数", "type": "number", "min": 0, "max": 10, "default": 0},
 ]
 
 ACTION_DECORATOR_FIELDS = [
-    {"key": "repeat_count", "label": "重复次数(1不重复,-1无限)", "type": "number"},
-    {"key": "timeout_ms", "label": "超时时间(ms,0不限)", "type": "number"},
+    {"key": "repeat_count", "label": "重复次数(1不重复,-1无限)", "type": "number", "min": 1, "default": 1},
+    {"key": "timeout_ms", "label": "超时时间(ms,0不限)", "type": "number", "min": 0, "default": 0},
 ]
 
 COMPOSITE_DECORATOR_FIELDS = [
-    {"key": "retry_count", "label": "失败重试次数", "type": "number", "min": 0, "max": 10},
-    {"key": "repeat_count", "label": "重复次数(1不重复,-1无限)", "type": "number"},
-    {"key": "timeout_ms", "label": "超时时间(ms,0不限)", "type": "number"},
+    {"key": "retry_count", "label": "失败重试次数", "type": "number", "min": 0, "max": 10, "default": 0},
+    {"key": "repeat_count", "label": "重复次数(1不重复,-1无限)", "type": "number", "min": 1, "default": 1},
+    {"key": "timeout_ms", "label": "超时时间(ms,0不限)", "type": "number", "min": 0, "default": 0},
 ]
-
-CONDITION_NODES = ["OCRConditionNode", "ImageConditionNode", "ColorConditionNode", "NumberConditionNode", "VariableConditionNode"]
-ACTION_NODES = ["KeyPressNode", "MouseClickNode", "MouseMoveNode", "DelayNode", "SetVariableNode", "ScriptNode", "CodeNode", "AlarmNode"]
-COMPOSITE_NODES = ["SequenceNode", "SelectorNode", "ParallelNode"]
 
 
 class FieldWidget(ctk.CTkFrame):
@@ -252,14 +248,26 @@ class NumberField(FieldWidget):
             self.var.set(str(value))
         elif self.default is not None:
             self.var.set(str(self.default))
+        elif self.min_val is not None:
+            self.var.set(str(self.min_val))
         else:
-            self.var.set(str(self.min_val or 0))
+            self.var.set("0")
     
     def get_value(self) -> Any:
         try:
-            return float(self.var.get()) if "." in self.var.get() else int(self.var.get())
+            value = float(self.var.get()) if "." in self.var.get() else int(self.var.get())
+            if self.min_val is not None:
+                value = max(self.min_val, value)
+            if self.max_val is not None:
+                value = min(self.max_val, value)
+            return value
         except ValueError:
-            return self.default if self.default is not None else 0
+            if self.default is not None:
+                return self.default
+            elif self.min_val is not None:
+                return self.min_val
+            else:
+                return 0
 
 
 class SelectField(FieldWidget):
@@ -1206,7 +1214,10 @@ class PropertyPanel(ctk.CTkFrame):
             if schema:
                 self._create_section_title("配置参数")
                 for field in schema:
-                    self._create_field(field, node_data.get("config", {}).get(field["key"]))
+                    value = node_data.get("config", {}).get(field["key"])
+                    if node_type == "AlarmNode":
+                        value = self._get_alarm_default_value(field["key"], value)
+                    self._create_field(field, value)
             
             decorator_fields = []
             if node_type in CONDITION_NODES:
@@ -1222,6 +1233,23 @@ class PropertyPanel(ctk.CTkFrame):
                     self._create_field(field, node_data.get("config", {}).get(field["key"]))
         finally:
             self._is_loading = False
+    
+    def _get_alarm_default_value(self, key: str, current_value: Any) -> Any:
+        """获取报警节点的默认值（从全局设置）"""
+        if key == "sound_path":
+            if not current_value:
+                if self.app and hasattr(self.app, 'alarm_sound_path'):
+                    global_path = self.app.alarm_sound_path.get()
+                    if global_path:
+                        return global_path
+                    elif hasattr(self.app, 'alarm_module'):
+                        return self.app.alarm_module.get_default_alarm_sound_path()
+        elif key == "volume":
+            if current_value is None:
+                if self.app and hasattr(self.app, 'alarm_volume'):
+                    return self.app.alarm_volume.get()
+                return 70
+        return current_value
     
     def _create_section_title(self, title: str):
         """创建区块标题"""

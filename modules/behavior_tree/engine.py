@@ -60,6 +60,10 @@ class BehaviorTreeEngine:
     - 加载/保存行为树
     - 启动/停止/暂停/恢复执行
     - 状态监控
+    
+    线程安全：
+    - 使用 threading.Lock 保护共享状态
+    - 使用 threading.Event 实现线程间同步
     """
     
     def __init__(self, app: "AutoDoorOCR", on_complete: Optional[callable] = None, on_node_status: Optional[callable] = None):
@@ -71,18 +75,22 @@ class BehaviorTreeEngine:
         self.on_node_status = on_node_status
         
         self.tick_interval: float = 0.001  # 1ms，最小延迟
-        self._is_running = False
-        self._is_paused = False
         self._tree_name = ""
         self._file_path: Optional[str] = None
+        
+        self._lock = threading.Lock()
+        self._running_event = threading.Event()
+        self._paused_event = threading.Event()
     
     @property
     def is_running(self) -> bool:
-        return self._is_running
+        with self._lock:
+            return self._running_event.is_set()
     
     @property
     def is_paused(self) -> bool:
-        return self._is_paused
+        with self._lock:
+            return self._paused_event.is_set()
     
     @property
     def tree_name(self) -> str:
@@ -261,11 +269,13 @@ class BehaviorTreeEngine:
         if not self.root_node:
             return
         
-        if self._is_running:
-            return
+        with self._lock:
+            if self._running_event.is_set():
+                return
+            
+            self._running_event.set()
+            self._paused_event.clear()
         
-        self._is_running = True
-        self._is_paused = False
         self.context = ExecutionContext(self.app)
         
         if self.on_node_status:
@@ -281,8 +291,9 @@ class BehaviorTreeEngine:
     
     def stop(self) -> None:
         """停止执行"""
-        self._is_running = False
-        self._is_paused = False
+        with self._lock:
+            self._running_event.clear()
+            self._paused_event.clear()
         
         if self.context:
             self.context.stop()
@@ -295,21 +306,23 @@ class BehaviorTreeEngine:
     
     def pause(self) -> None:
         """暂停执行"""
-        self._is_paused = True
+        with self._lock:
+            self._paused_event.set()
         if self.context:
             self.context.pause()
     
     def resume(self) -> None:
         """恢复执行"""
-        self._is_paused = False
+        with self._lock:
+            self._paused_event.clear()
         if self.context:
             self.context.resume()
     
     def _execution_loop(self) -> None:
         """执行循环（后台线程）"""
         try:
-            while self._is_running and self.context:
-                if self._is_paused:
+            while self._running_event.is_set() and self.context:
+                if self._paused_event.is_set():
                     time.sleep(self.tick_interval)
                     continue
                 
@@ -320,7 +333,8 @@ class BehaviorTreeEngine:
                 status = self.root_node.tick(self.context)
                 
                 if status != NodeStatus.RUNNING:
-                    self._is_running = False
+                    with self._lock:
+                        self._running_event.clear()
                     if hasattr(self.app, "logging_manager"):
                         self.app.logging_manager.log_message(
                             f"[BT] 行为树执行完成，状态: {status.value}"
@@ -332,7 +346,8 @@ class BehaviorTreeEngine:
             if hasattr(self.app, "logging_manager"):
                 self.app.logging_manager.log_message(f"[BT] 执行出错: {e}")
         finally:
-            self._is_running = False
+            with self._lock:
+                self._running_event.clear()
             if self.on_complete:
                 try:
                     if hasattr(self.app, 'root') and hasattr(self.app.root, 'after'):
@@ -349,9 +364,13 @@ class BehaviorTreeEngine:
         Returns:
             状态信息字典
         """
+        with self._lock:
+            is_running = self._running_event.is_set()
+            is_paused = self._paused_event.is_set()
+        
         return {
-            "is_running": self._is_running,
-            "is_paused": self._is_paused,
+            "is_running": is_running,
+            "is_paused": is_paused,
             "tree_name": self._tree_name,
             "tick_count": self.context.tick_count if self.context else 0,
             "elapsed_time": self.context.elapsed_time if self.context else 0,

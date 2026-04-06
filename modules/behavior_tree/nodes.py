@@ -84,7 +84,7 @@ class Node(ABC):
         if hasattr(self, key):
             try:
                 setattr(self, key, value)
-            except AttributeError:
+            except (AttributeError, TypeError) as e:
                 pass
     
     def to_dict(self) -> Dict[str, Any]:
@@ -348,6 +348,29 @@ class ConditionNode(Node):
     def _execute_condition(self, context: "ExecutionContext") -> NodeStatus:
         """子类实现的条件检测逻辑"""
         raise NotImplementedError
+    
+    def _parse_region(self, region_config) -> tuple:
+        """
+        解析区域配置
+        
+        Args:
+            region_config: 区域配置，支持 None、list、tuple、str 格式
+            
+        Returns:
+            tuple: (x1, y1, x2, y2) 区域坐标
+        """
+        if region_config is None:
+            return (0, 0, 100, 100)
+        elif isinstance(region_config, (list, tuple)):
+            return tuple(region_config)
+        elif isinstance(region_config, str):
+            try:
+                parts = [int(x.strip()) for x in region_config.split(",")]
+                if len(parts) == 4:
+                    return tuple(parts)
+            except (ValueError, AttributeError):
+                pass
+        return (0, 0, 100, 100)
     
     def _reset_for_retry(self) -> None:
         """重试时重置状态（保留重试计数器）"""

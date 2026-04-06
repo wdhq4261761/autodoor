@@ -6,8 +6,9 @@
 
 import copy
 import customtkinter as ctk
+import tkinter as tk
 from tkinter import filedialog, messagebox
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from ui.theme import Theme
 from ui.bt_editor.canvas import BehaviorTreeCanvas, NodeExecutionStatus
@@ -15,8 +16,8 @@ from ui.bt_editor.palette import NodePalette
 from ui.bt_editor.property import PropertyPanel
 from ui.bt_editor.toolbar import EditorToolbar
 from ui.bt_editor.undo_redo import (
-    CommandManager, AddNodeCommand, RemoveNodeCommand, 
-    MoveNodeCommand, AddConnectionCommand
+    CommandManager, AddNodeCommand, AddNodesCommand, RemoveNodeCommand, RemoveNodesCommand,
+    MoveNodeCommand, MoveNodesCommand, AddConnectionCommand
 )
 from modules.persistence import AutoSaveManager, CrashRecoveryHandler, FileRecoveryHandler
 from ui.script_tab import askyesnocancel_centered
@@ -155,6 +156,7 @@ class BehaviorTreeEditor(ctk.CTkFrame):
             self.app,
             on_node_select=self._on_node_select,
             on_node_move=self._on_node_move,
+            on_nodes_move=self._on_nodes_move,
             on_connection_add=self._on_connection_add,
             on_node_deselect=self._on_node_deselect
         )
@@ -196,7 +198,7 @@ class BehaviorTreeEditor(ctk.CTkFrame):
                 widget.bind("<Button-1>", on_global_click, add="+")
                 for child in widget.winfo_children():
                     bind_recursive(child)
-            except:
+            except (tk.TclError, AttributeError, NotImplementedError):
                 pass
         
         bind_recursive(root)
@@ -435,6 +437,18 @@ class BehaviorTreeEditor(ctk.CTkFrame):
         self.command_manager.execute(command)
         self._is_modified = True
     
+    def _on_nodes_move(self, old_positions: Dict[str, tuple], new_positions: Dict[str, tuple]):
+        """多节点移动"""
+        command = MoveNodesCommand(
+            canvas=self.canvas,
+            node_ids=list(old_positions.keys()),
+            old_positions=old_positions,
+            new_positions=new_positions,
+            description=f"移动 {len(old_positions)} 个节点"
+        )
+        self.command_manager.execute(command)
+        self._is_modified = True
+    
     def _on_connection_add(self, parent_id: str, child_id: str):
         """添加连线"""
         command = AddConnectionCommand(
@@ -456,7 +470,16 @@ class BehaviorTreeEditor(ctk.CTkFrame):
     
     def _on_delete_selected(self):
         """删除选中节点或连线"""
-        if self.canvas.selected_node:
+        if self.canvas.selected_nodes and len(self.canvas.selected_nodes) > 1:
+            command = RemoveNodesCommand(
+                canvas=self.canvas,
+                node_ids=list(self.canvas.selected_nodes),
+                description=f"删除 {len(self.canvas.selected_nodes)} 个节点"
+            )
+            self.command_manager.execute(command)
+            self._is_modified = True
+            self._update_undo_redo_buttons()
+        elif self.canvas.selected_node:
             command = RemoveNodeCommand(
                 canvas=self.canvas,
                 node_id=self.canvas.selected_node
@@ -485,32 +508,120 @@ class BehaviorTreeEditor(ctk.CTkFrame):
     
     def _on_copy(self):
         """复制节点"""
-        if self.canvas.selected_node:
-            self._clipboard = self.canvas.selected_node
-    
-    def _on_paste(self):
-        """粘贴节点"""
-        if hasattr(self, '_clipboard') and self._clipboard:
-            if self._clipboard in self.canvas.nodes:
-                node = self.canvas.nodes[self._clipboard]
-                self._node_counter += 1
-                new_id = f"node_{self._node_counter}"
-                
-                command = AddNodeCommand(
-                    canvas=self.canvas,
-                    node_id=new_id,
-                    node_type=node.node_type,
-                    x=node.x + 50,
-                    y=node.y + 50,
-                    node_data={
+        if self.canvas.selected_nodes:
+            self._clipboard = self.canvas._copy_selected_nodes_to_clipboard()
+        elif self.canvas.selected_node:
+            node = self.canvas.nodes.get(self.canvas.selected_node)
+            if node:
+                self._clipboard = {
+                    'nodes': [{
+                        'id': self.canvas.selected_node,
+                        'type': node.node_type,
                         'name': node.name,
                         'config': copy.deepcopy(node.config) if node.config else {},
                         'enabled': node.enabled
+                    }],
+                    'connections': [],
+                    'relative_positions': {
+                        self.canvas.selected_node: (0, 0)
                     }
-                )
-                self.command_manager.execute(command)
-                self._is_modified = True
-                self._update_undo_redo_buttons()
+                }
+    
+    def _on_paste(self):
+        """粘贴节点"""
+        if not hasattr(self, '_clipboard') or not self._clipboard:
+            return
+        
+        clipboard_data = self._clipboard
+        nodes_data = clipboard_data.get('nodes', [])
+        relative_positions = clipboard_data.get('relative_positions', {})
+        connections = clipboard_data.get('connections', [])
+        
+        if not nodes_data:
+            return
+        
+        if len(nodes_data) == 1:
+            node_data = nodes_data[0]
+            self._node_counter += 1
+            new_id = f"node_{self._node_counter}"
+            
+            rel_x, rel_y = relative_positions.get(node_data['id'], (0, 0))
+            
+            command = AddNodeCommand(
+                canvas=self.canvas,
+                node_id=new_id,
+                node_type=node_data['type'],
+                x=rel_x + 50,
+                y=rel_y + 50,
+                node_data={
+                    'name': node_data.get('name', ''),
+                    'config': copy.deepcopy(node_data.get('config', {})),
+                    'enabled': node_data.get('enabled', True)
+                }
+            )
+            self.command_manager.execute(command)
+            
+            self._select_new_nodes([new_id])
+            self._is_modified = True
+            self._update_undo_redo_buttons()
+        else:
+            id_map = {}
+            new_nodes_data = []
+            
+            for node_data in nodes_data:
+                old_id = node_data['id']
+                self._node_counter += 1
+                new_id = f"node_{self._node_counter}"
+                id_map[old_id] = new_id
+                
+                rel_x, rel_y = relative_positions.get(old_id, (0, 0))
+                
+                new_nodes_data.append({
+                    'id': new_id,
+                    'type': node_data['type'],
+                    'x': rel_x + 50,
+                    'y': rel_y + 50,
+                    'name': node_data.get('name', ''),
+                    'config': copy.deepcopy(node_data.get('config', {})),
+                    'enabled': node_data.get('enabled', True)
+                })
+            
+            new_connections = []
+            for old_parent, old_child in connections:
+                new_parent = id_map.get(old_parent)
+                new_child = id_map.get(old_child)
+                if new_parent and new_child:
+                    new_connections.append((new_parent, new_child))
+            
+            command = AddNodesCommand(
+                canvas=self.canvas,
+                nodes_data=new_nodes_data,
+                connections=new_connections,
+                description=f"粘贴 {len(new_nodes_data)} 个节点"
+            )
+            self.command_manager.execute(command)
+            
+            new_ids = [n['id'] for n in new_nodes_data]
+            self._select_new_nodes(new_ids)
+            
+            self._is_modified = True
+            self._update_undo_redo_buttons()
+    
+    def _select_new_nodes(self, node_ids: List[str]):
+        """选中新节点"""
+        self.canvas._deselect_all()
+        
+        for node_id in node_ids:
+            if node_id in self.canvas.nodes:
+                self.canvas.selected_nodes.append(node_id)
+                self.canvas.nodes[node_id].set_selected(True)
+        
+        if self.canvas.selected_nodes:
+            self.canvas.selected_node = self.canvas.selected_nodes[0]
+            if len(self.canvas.selected_nodes) == 1:
+                node = self.canvas.nodes[self.canvas.selected_node]
+                if self.canvas.on_node_select:
+                    self.canvas.on_node_select(self.canvas.selected_node, node.node_type)
     
     def _on_duplicate(self):
         """复制并粘贴"""

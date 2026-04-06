@@ -7,6 +7,7 @@ OCR 条件节点适配器
 from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 from modules.behavior_tree.nodes import ConditionNode, NodeStatus
+from modules.bt_adapters.image_utils import ImagePreprocessor
 
 if TYPE_CHECKING:
     from modules.behavior_tree.context import ExecutionContext
@@ -38,7 +39,7 @@ class OCRConditionNode(ConditionNode):
                 context.log(f"OCR节点 {self.name}: 截图失败")
                 return NodeStatus.FAILURE
             
-            processed_image = self._preprocess_image(screenshot)
+            processed_image = ImagePreprocessor.preprocess(screenshot, "standard")
             if processed_image is None:
                 context.log(f"OCR节点 {self.name}: 图像预处理失败")
                 return NodeStatus.FAILURE
@@ -70,46 +71,6 @@ class OCRConditionNode(ConditionNode):
         except Exception as e:
             context.log(f"OCR节点 {self.name}: 执行出错 - {e}")
             return NodeStatus.FAILURE
-    
-    def _preprocess_image(self, image):
-        """
-        图像预处理 - 与原项目OCR模块保持一致
-        
-        Args:
-            image: PIL.Image 原始图像
-            
-        Returns:
-            PIL.Image: 处理后的图像
-        """
-        try:
-            from PIL import ImageEnhance, ImageFilter
-            
-            image = image.convert('L')
-            
-            enhancer = ImageEnhance.Contrast(image)
-            image = enhancer.enhance(1.5)
-            
-            image = image.filter(ImageFilter.SHARPEN)
-            
-            image = image.point(lambda p: p > 128 and 255)
-            
-            return image
-        except Exception as e:
-            return None
-    
-    def _parse_region(self, region_config) -> tuple:
-        if region_config is None:
-            return (0, 0, 100, 100)
-        elif isinstance(region_config, (list, tuple)):
-            return tuple(region_config)
-        elif isinstance(region_config, str):
-            try:
-                parts = [int(x.strip()) for x in region_config.split(",")]
-                if len(parts) == 4:
-                    return tuple(parts)
-            except (ValueError, AttributeError):
-                pass
-        return (0, 0, 100, 100)
     
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
