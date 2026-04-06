@@ -2,6 +2,8 @@ import threading
 import time
 import re
 import tkinter as tk
+from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 from modules.recorder import RecorderBase
 from core.priority_lock import get_module_priority
@@ -107,14 +109,43 @@ class ScriptExecutor(RecorderBase):
     """
     脚本执行器类
     优先级: 1 (最低)
+    
+    优化：
+    - 使用线程池管理执行线程，减少线程创建开销
+    - 限制最大并发脚本数，防止资源耗尽
     """
     PRIORITY = get_module_priority('script')
+    
+    _thread_pool: Optional[ThreadPoolExecutor] = None
+    _pool_lock = threading.Lock()
+    MAX_WORKERS = 4
+    
+    @classmethod
+    def _get_thread_pool(cls) -> ThreadPoolExecutor:
+        """获取或创建线程池（懒加载）"""
+        if cls._thread_pool is None:
+            with cls._pool_lock:
+                if cls._thread_pool is None:
+                    cls._thread_pool = ThreadPoolExecutor(
+                        max_workers=cls.MAX_WORKERS,
+                        thread_name_prefix="script_executor"
+                    )
+        return cls._thread_pool
+    
+    @classmethod
+    def shutdown_pool(cls, wait: bool = True) -> None:
+        """关闭线程池"""
+        with cls._pool_lock:
+            if cls._thread_pool is not None:
+                cls._thread_pool.shutdown(wait=wait)
+                cls._thread_pool = None
     
     def __init__(self, app):
         super().__init__(app)
         self.is_running = False
         self.is_paused = False
         self.execution_thread = None
+        self._execution_future = None
         self.recording_thread = None
         self.recording_events = []
         self.recording_start_time = None
@@ -140,7 +171,26 @@ class ScriptExecutor(RecorderBase):
         """统一执行入口，自动应用优化"""
         optimized = self._optimize_delay(command, next_command)
         self.execute_command(optimized)
-
+    
+    def _wait_for_completion(self, timeout: Optional[float] = None) -> bool:
+        """
+        等待脚本执行完成
+        
+        Args:
+            timeout: 超时时间（秒），None 表示无限等待
+            
+        Returns:
+            bool: 是否在超时前完成
+        """
+        if self._execution_future is None:
+            return True
+        
+        try:
+            self._execution_future.result(timeout=timeout)
+            return True
+        except Exception:
+            return False
+    
     def run_script(self, script_content):
         def execute():
             self.is_running = True
@@ -296,8 +346,41 @@ class ScriptExecutor(RecorderBase):
                 self.is_running = False
                 self.app.logging_manager.log_message("脚本执行完成")
         
-        self.execution_thread = threading.Thread(target=execute, daemon=True)
-        self.execution_thread.start()
+        pool = self._get_thread_pool()
+        self._execution_future = pool.submit(execute)
+        
+        class ThreadProxy:
+            """线程代理对象，提供类似 threading.Thread 的接口"""
+            
+            def __init__(self, future, executor_ref):
+                self._future = future
+                self._executor_ref = executor_ref
+            
+            def is_alive(self) -> bool:
+                """检查线程是否仍在运行"""
+                return not self._future.done()
+            
+            def join(self, timeout: Optional[float] = None) -> bool:
+                """
+                等待线程完成
+                
+                Args:
+                    timeout: 超时时间（秒），None 表示无限等待
+                    
+                Returns:
+                    bool: 是否在超时前完成
+                """
+                try:
+                    self._future.result(timeout=timeout)
+                    return True
+                except Exception:
+                    return False
+            
+            @property
+            def name(self) -> str:
+                return f"script_executor_{id(self._executor_ref)}"
+        
+        self.execution_thread = ThreadProxy(self._execution_future, self)
 
     def parse_line(self, line):
         line = line.strip()

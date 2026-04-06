@@ -41,6 +41,7 @@ env/
 .coverage
 htmlcov/
 .tox/
+/jiaoben/
 
 # Build outputs
 *.exe

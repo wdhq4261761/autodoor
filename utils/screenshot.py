@@ -42,6 +42,7 @@ class ScreenshotManager:
     
     _instance = None
     _lock = threading.Lock()
+    _cache_max_age = 5.0
     
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -73,9 +74,13 @@ class ScreenshotManager:
         with self.screenshot_lock.acquire(priority):
             current_time = time.time()
             
-            if (self.last_full_screenshot is not None and 
-                current_time - self.last_time < self.cache_duration):
-                return self.last_full_screenshot.copy()
+            if self.last_full_screenshot is not None:
+                cache_age = current_time - self.last_time
+                if cache_age > self._cache_max_age:
+                    self.last_full_screenshot = None
+                    self.last_time = 0
+                elif cache_age < self.cache_duration:
+                    return self.last_full_screenshot.copy()
             
             try:
                 self.last_full_screenshot = ImageGrab.grab(all_screens=True)

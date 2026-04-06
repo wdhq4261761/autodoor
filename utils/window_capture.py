@@ -160,6 +160,7 @@ def capture_window(hwnd: int) -> Optional[Image.Image]:
     mfcDC = None
     saveDC = None
     saveBitMap = None
+    img = None
     
     try:
         rect = win32gui.GetWindowRect(hwnd)
@@ -176,10 +177,16 @@ def capture_window(hwnd: int) -> Optional[Image.Image]:
         
         mfcDC = win32ui.CreateDCFromHandle(hwndDC)
         if not mfcDC:
+            win32gui.ReleaseDC(hwnd, hwndDC)
+            hwndDC = None
             return None
         
         saveDC = mfcDC.CreateCompatibleDC()
         if not saveDC:
+            mfcDC.DeleteDC()
+            win32gui.ReleaseDC(hwnd, hwndDC)
+            mfcDC = None
+            hwndDC = None
             return None
         
         saveBitMap = win32ui.CreateBitmap()
@@ -208,24 +215,28 @@ def capture_window(hwnd: int) -> Optional[Image.Image]:
         try:
             if saveBitMap:
                 win32gui.DeleteObject(saveBitMap.GetHandle())
+                saveBitMap = None
         except Exception:
             pass
         
         try:
             if saveDC:
                 saveDC.DeleteDC()
+                saveDC = None
         except Exception:
             pass
         
         try:
             if mfcDC:
                 mfcDC.DeleteDC()
+                mfcDC = None
         except Exception:
             pass
         
         try:
             if hwndDC:
                 win32gui.ReleaseDC(hwnd, hwndDC)
+                hwndDC = None
         except Exception:
             pass
 

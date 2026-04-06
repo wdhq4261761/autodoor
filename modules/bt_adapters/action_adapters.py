@@ -4,6 +4,7 @@
 将输入操作封装为行为树动作节点
 """
 
+import threading
 import time
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
@@ -66,6 +67,7 @@ class MouseClickNode(ActionNode):
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
+        self._abort_requested = False
     
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
         button = self.config.get("button", "left")
@@ -85,7 +87,7 @@ class MouseClickNode(ActionNode):
             
             if click_count == -1:
                 click_index = 0
-                while context.check_running():
+                while context.check_running() and not self._abort_requested:
                     success = context.execute_mouse_click(button, action, click_position, duration)
                     
                     if not success:
@@ -94,12 +96,17 @@ class MouseClickNode(ActionNode):
                     click_index += 1
                     time.sleep(click_interval / 1000.0)
                 
+                if self._abort_requested:
+                    pos_str = click_position if click_position else "当前位置"
+                    context.log(f"鼠标: {button} @ {pos_str} (点击{click_index}次后中止)")
+                    return NodeStatus.ABORTED
+                
                 pos_str = click_position if click_position else "当前位置"
                 context.log(f"鼠标: {button} @ {pos_str} (点击{click_index}次)")
                 return NodeStatus.SUCCESS
             elif click_count > 1:
                 for i in range(click_count):
-                    if not context.check_running():
+                    if not context.check_running() or self._abort_requested:
                         return NodeStatus.ABORTED
                     
                     success = context.execute_mouse_click(button, action, click_position, duration)
@@ -126,6 +133,16 @@ class MouseClickNode(ActionNode):
         except Exception as e:
             context.log(f"鼠标: 执行出错 - {e}")
             return NodeStatus.FAILURE
+    
+    def reset(self) -> None:
+        super().reset()
+        self._abort_requested = False
+    
+    def abort(self, context: "ExecutionContext") -> None:
+        """中止鼠标点击操作"""
+        self._abort_requested = True
+        super().reset()
+        context.notify_node_status(self.node_id, "aborted")
     
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
@@ -589,6 +606,25 @@ class CodeNode(ActionNode):
             delattr(self, '_stdout_thread')
             delattr(self, '_stderr_thread')
     
+    def abort(self, context: "ExecutionContext") -> None:
+        """中止代码执行，终止外部进程"""
+        if self._process is not None:
+            try:
+                context.log(f"代码节点 {self.name}: 中止执行，终止进程")
+                self._process.terminate()
+                try:
+                    self._process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    self._process.kill()
+                    self._process.wait(timeout=1)
+            except (OSError, subprocess.SubprocessError):
+                pass
+            self._process = None
+            self._code_started = False
+        
+        super().reset()
+        context.notify_node_status(self.node_id, "aborted")
+    
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
         data["config"] = {
@@ -606,12 +642,81 @@ class ScriptNode(ActionNode):
     
     执行原项目脚本格式的txt文件，支持按键、鼠标、延时等命令
     非阻塞模式：每次tick检查脚本是否完成
+    
+    优化：
+    - 添加线程锁保护，防止 abort() 和 tick() 的竞态条件
+    - abort() 中等待线程真正退出
+    - 复用 ScriptExecutor 实例，减少创建开销
+    - 确保线程真正退出后才复用 executor
     """
+    
+    _executor_pool: Dict[str, Any] = {}
+    _pool_lock = threading.Lock()
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
         self._executor: Optional[Any] = None
         self._script_started = False
+        self._lock = threading.Lock()
+    
+    def _get_or_create_executor(self, app: Any) -> Any:
+        """
+        获取或创建 ScriptExecutor 实例（复用优化）
+        
+        确保线程真正退出后才复用 executor，避免竞态条件
+        """
+        from modules.script import ScriptExecutor
+        
+        with ScriptNode._pool_lock:
+            if self.node_id not in ScriptNode._executor_pool:
+                ScriptNode._executor_pool[self.node_id] = ScriptExecutor(app)
+                return ScriptNode._executor_pool[self.node_id]
+            
+            executor = ScriptNode._executor_pool[self.node_id]
+            
+            if executor.is_running:
+                ScriptNode._executor_pool[self.node_id] = ScriptExecutor(app)
+                return ScriptNode._executor_pool[self.node_id]
+            
+            if hasattr(executor, '_execution_future') and executor._execution_future is not None:
+                if not executor._execution_future.done():
+                    try:
+                        executor._execution_future.result(timeout=1.0)
+                    except Exception:
+                        pass
+                    
+                    if not executor._execution_future.done():
+                        ScriptNode._executor_pool[self.node_id] = ScriptExecutor(app)
+                        return ScriptNode._executor_pool[self.node_id]
+            
+            return executor
+    
+    @classmethod
+    def cleanup_executor_pool(cls) -> None:
+        """清理所有已完成的 executor，释放内存"""
+        with cls._pool_lock:
+            to_remove = []
+            for node_id, executor in cls._executor_pool.items():
+                if not executor.is_running:
+                    if not hasattr(executor, '_execution_future') or executor._execution_future is None:
+                        to_remove.append(node_id)
+                    elif executor._execution_future.done():
+                        to_remove.append(node_id)
+            
+            for node_id in to_remove:
+                del cls._executor_pool[node_id]
+    
+    @classmethod
+    def clear_executor_pool(cls) -> None:
+        """清空整个 executor 池，用于行为树停止时调用"""
+        with cls._pool_lock:
+            for executor in cls._executor_pool.values():
+                if executor.is_running:
+                    try:
+                        executor.stop_script()
+                    except Exception:
+                        pass
+            cls._executor_pool.clear()
     
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
         script_path = self.config.get("script_path", "")
@@ -621,34 +726,35 @@ class ScriptNode(ActionNode):
             return NodeStatus.FAILURE
         
         try:
-            if not self._script_started:
-                from pathlib import Path
-                from modules.script import ScriptExecutor
-                
-                script_file = Path(script_path)
-                if not script_file.exists():
-                    context.log(f"脚本节点 {self.name}: 脚本文件不存在 {script_path}")
-                    return NodeStatus.FAILURE
-                
-                with open(script_file, 'r', encoding='utf-8') as f:
-                    script_content = f.read()
-                
-                if not script_content.strip():
-                    context.log(f"脚本节点 {self.name}: 脚本内容为空")
-                    return NodeStatus.FAILURE
-                
-                context.log(f"脚本节点 {self.name}: 开始执行脚本 {script_path}")
-                
-                self._executor = ScriptExecutor(context.app)
-                self._executor.run_script_once(script_content)
-                self._script_started = True
-                return NodeStatus.RUNNING
+            with self._lock:
+                if not self._script_started:
+                    from pathlib import Path
+                    
+                    script_file = Path(script_path)
+                    if not script_file.exists():
+                        context.log(f"脚本节点 {self.name}: 脚本文件不存在 {script_path}")
+                        return NodeStatus.FAILURE
+                    
+                    with open(script_file, 'r', encoding='utf-8') as f:
+                        script_content = f.read()
+                    
+                    if not script_content.strip():
+                        context.log(f"脚本节点 {self.name}: 脚本内容为空")
+                        return NodeStatus.FAILURE
+                    
+                    context.log(f"脚本节点 {self.name}: 开始执行脚本 {script_path}")
+                    
+                    self._executor = self._get_or_create_executor(context.app)
+                    self._executor.run_script_once(script_content)
+                    self._script_started = True
+                    return NodeStatus.RUNNING
             
-            if self._executor and self._executor.is_running:
-                if not context.check_running():
-                    self._executor.stop_script()
-                    return NodeStatus.ABORTED
-                return NodeStatus.RUNNING
+            with self._lock:
+                if self._executor and self._executor.is_running:
+                    if not context.check_running():
+                        self._executor.stop_script()
+                        return NodeStatus.ABORTED
+                    return NodeStatus.RUNNING
             
             context.log(f"脚本节点 {self.name}: 脚本执行完成")
             return NodeStatus.SUCCESS
@@ -658,14 +764,38 @@ class ScriptNode(ActionNode):
             return NodeStatus.FAILURE
     
     def reset(self) -> None:
+        with self._lock:
+            if self._executor and self._executor.is_running:
+                try:
+                    self._executor.stop_script()
+                    if hasattr(self._executor, 'execution_thread') and self._executor.execution_thread:
+                        self._executor.execution_thread.join(timeout=0.5)
+                except Exception:
+                    pass
+            self._executor = None
+            self._script_started = False
         super().reset()
-        if self._executor and self._executor.is_running:
-            try:
-                self._executor.stop_script()
-            except Exception:
-                pass
-        self._executor = None
-        self._script_started = False
+    
+    def abort(self, context: "ExecutionContext") -> None:
+        """中止脚本执行，等待线程退出"""
+        with self._lock:
+            if self._executor and self._executor.is_running:
+                try:
+                    context.log(f"脚本节点 {self.name}: 中止执行，停止脚本")
+                    self._executor.stop_script()
+                    
+                    if hasattr(self._executor, 'execution_thread') and self._executor.execution_thread:
+                        self._executor.execution_thread.join(timeout=0.5)
+                        if self._executor.execution_thread.is_alive():
+                            context.log(f"脚本节点 {self.name}: 线程未能在超时时间内退出")
+                except Exception as e:
+                    context.log(f"脚本节点 {self.name}: 中止时出错 - {e}")
+                
+                self._executor = None
+                self._script_started = False
+        
+        super().reset()
+        context.notify_node_status(self.node_id, "aborted")
     
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()

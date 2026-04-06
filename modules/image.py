@@ -239,22 +239,40 @@ class ImageDetectionManager:
     
     def _update_image_preview(self, group, image_path):
         """更新图像预览"""
+        image = None
         try:
             if "image_preview" in group and group["image_preview"]:
                 image = Image.open(image_path)
                 orig_w, orig_h = image.size
                 
+                if orig_w <= 0 or orig_h <= 0:
+                    return
+                
                 max_w, max_h = 60, 40
                 ratio = min(max_w / orig_w, max_h / orig_h)
-                new_w = int(orig_w * ratio)
-                new_h = int(orig_h * ratio)
+                new_w = max(1, int(orig_w * ratio))
+                new_h = max(1, int(orig_h * ratio))
                 
                 import customtkinter as ctk
+                
+                if hasattr(group["image_preview"], 'image') and group["image_preview"].image:
+                    try:
+                        old_image = group["image_preview"].image
+                        del old_image
+                    except:
+                        pass
+                
                 ctk_image = ctk.CTkImage(light_image=image, size=(new_w, new_h))
                 group["image_preview"].configure(image=ctk_image)
                 group["image_preview"].image = ctk_image
         except Exception:
             pass
+        finally:
+            if image is not None:
+                try:
+                    image.close()
+                except:
+                    pass
     
     def start_detection(self, group_index):
         """开始单个检测组的检测"""

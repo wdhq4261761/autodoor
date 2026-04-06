@@ -189,11 +189,9 @@ class ExecutionContext:
 class Blackboard:
     # 内置变量
     BUILTIN_VARS = {
-        "last_ocr_position": None,      # 最后OCR检测位置
-        "last_image_position": None,    # 最后图像匹配位置
-        "last_color_position": None,    # 最后颜色检测位置
-        "last_number_value": None,      # 最后识别的数字值
-        "execution_count": 0,           # 执行计数
+        "last_detection_position": None,  # 最后检测位置（OCR/图像/颜色统一使用）
+        "last_number_value": None,        # 最后识别的数字值
+        "execution_count": 0,             # 执行计数
     }
     
     # 核心方法
@@ -202,6 +200,11 @@ class Blackboard:
     increment(key, amount) # 递增变量
     subscribe(key, callback) # 订阅变化
 ```
+
+**重要说明**：
+- `last_detection_position`：所有检测节点（OCR/图像/颜色）检测成功后，会将检测到的位置统一保存到此变量
+- 保存的是**绝对坐标**（屏幕坐标），而非相对于检测区域的坐标
+- 点击节点勾选"点击最近检测点"时，会从此变量读取位置
 
 ### 2.3 数据流向
 
@@ -299,6 +302,33 @@ class NodeStatus(Enum):
     ABORTED = "aborted"    # 被中止
 ```
 
+**节点中止接口**：
+
+每个节点都支持 `abort()` 方法，用于在外部中止节点执行：
+
+```python
+class Node(ABC):
+    def abort(self, context: "ExecutionContext") -> None:
+        """
+        中止节点执行
+        
+        当节点被外部中止时调用（如并行节点完成时中止其他RUNNING子节点）。
+        子类可以重写此方法以实现特定的中止逻辑。
+        """
+        self.reset()
+        context.notify_node_status(self.node_id, "aborted")
+```
+
+**各节点类型的中止行为**：
+
+| 节点类型 | 中止行为 |
+|---------|---------|
+| CodeNode | 终止外部进程（terminate/kill） |
+| ScriptNode | 停止脚本执行器 |
+| MouseClickNode | 停止无限点击循环 |
+| DelayNode | 重置延时状态 |
+| 其他节点 | 调用 reset() 重置状态 |
+
 **执行流程**：
 
 ```
@@ -332,14 +362,18 @@ tick(context)
 
 ```
 执行逻辑：
-1. 按顺序依次执行子节点
-2. 所有子节点成功才返回成功
-3. 默认：任一子节点失败立即返回失败
-4. 开启 continue_on_failure：失败仍继续执行，最终根据失败情况返回结果
-5. 子节点返回 RUNNING 时记录位置并返回 RUNNING
+1. 空子节点列表时返回 SUCCESS
+2. 按顺序依次执行子节点
+3. 所有子节点成功才返回成功
+4. 默认：任一子节点失败立即返回失败
+5. 开启 continue_on_failure：失败仍继续执行，最终根据失败情况返回结果
+6. 子节点返回 RUNNING 时记录位置并返回 RUNNING
 
 伪代码：
 function tick(context):
+    if children is empty:
+        return SUCCESS
+    
     has_failure = false
     
     while current_index < children.length:
@@ -375,13 +409,17 @@ function tick(context):
 
 ```
 执行逻辑：
-1. 按顺序依次执行子节点
-2. 任一子节点成功立即返回成功
-3. 所有子节点失败才返回失败
-4. 子节点返回 RUNNING 时记录位置并返回 RUNNING
+1. 空子节点列表时返回 FAILURE
+2. 按顺序依次执行子节点
+3. 任一子节点成功立即返回成功
+4. 所有子节点失败才返回失败
+5. 子节点返回 RUNNING 时记录位置并返回 RUNNING
 
 伪代码：
 function tick(context):
+    if children is empty:
+        return FAILURE
+    
     while current_index < children.length:
         child = children[current_index]
         
@@ -406,38 +444,87 @@ function tick(context):
 
 ```
 执行逻辑：
-1. 同时执行所有子节点
-2. 根据成功策略决定最终结果：
-   - require_all: 所有子节点成功才成功
-   - require_one: 任一子节点成功即成功
-3. 有子节点 RUNNING 时返回 RUNNING
+1. 空子节点列表时返回 SUCCESS
+2. 同时执行所有子节点
+3. 已完成的子节点使用缓存状态，不会重复执行
+4. 根据成功策略决定最终结果：
+   - require_all: 所有启用的子节点成功才成功
+   - require_one: 任一子节点成功即成功（立即返回）
+5. 有子节点 RUNNING 时返回 RUNNING
+6. 节点完成时中止所有 RUNNING 子节点：
+   - 调用子节点的 abort() 方法
+   - 子节点状态更新为 ABORTED
+   - 画布状态同步更新
+
+中止行为说明：
+- 当并行节点判定成功时，会立即中止所有仍在 RUNNING 的子节点
+- CodeNode：终止外部进程
+- ScriptNode：停止脚本执行
+- MouseClickNode（无限点击）：停止点击循环
+- DelayNode：重置延时状态
 
 伪代码：
 function tick(context):
+    if children is empty:
+        return SUCCESS
+    
     success_count = 0
     failure_count = 0
     running_count = 0
+    running_children = []
     
-    for child in children:
+    for i, child in enumerate(children):
         if not child.enabled:
             continue
+        
+        # 检查缓存状态（已完成的子节点不重复执行）
+        if i in cached_statuses:
+            status = cached_statuses[i]
+            if status == SUCCESS:
+                success_count++
+                continue
+            elif status == FAILURE:
+                failure_count++
+                continue
         
         status = child.tick(context)
         
         if status == SUCCESS:
+            cached_statuses[i] = SUCCESS
             success_count++
         elif status == FAILURE:
+            cached_statuses[i] = FAILURE
             failure_count++
         elif status == RUNNING:
             running_count++
+            running_children.append(child)
+    
+    # require_one 策略：任一成功即成功，中止其他 RUNNING 子节点
+    if success_policy == require_one and success_count > 0:
+        abort_running_children(context, running_children)
+        return SUCCESS
     
     if running_count > 0:
         return RUNNING
     
+    # require_all 策略：全部成功才成功
     if success_policy == require_all:
-        return success_count == enabled_count ? SUCCESS : FAILURE
+        if success_count == enabled_count:
+            abort_running_children(context, running_children)
+            return SUCCESS
+        else:
+            return FAILURE
     else:
-        return success_count > 0 ? SUCCESS : FAILURE
+        if success_count > 0:
+            abort_running_children(context, running_children)
+            return SUCCESS
+        else:
+            return FAILURE
+
+function abort_running_children(context, running_children):
+    for child in running_children:
+        if child.status == RUNNING:
+            child.abort(context)
 ```
 
 ### 3.2 数据结构设计
@@ -1287,10 +1374,20 @@ OCR检测"开始按钮" → 点击节点 → 延时节点(500ms)
 | extract_pattern | string | "" | 自定义提取模式 |
 | compare_mode | string | "<" | 比较模式 |
 | threshold | int | 0 | 比较阈值 |
+| min_confidence | float | 0.5 | 最小识别置信度 |
+| preprocess_mode | string | "normal" | 预处理模式 |
 | save_value | bool | true | 是否保存值 |
 | value_key | string | "last_number_value" | 黑板变量名 |
+| position_key | string | "last_detection_position" | 位置变量名 |
 | invert | bool | false | 结果取反 |
 | retry_count | int | 0 | 失败重试次数 |
+
+**预处理模式说明**：
+
+| 模式 | 说明 | 适用场景 |
+|------|------|----------|
+| normal | 普通文本模式 | 常规数字识别 |
+| artistic | 艺术字模式 | 游戏/艺术字体 |
 
 **提取模式说明**：
 
@@ -1444,7 +1541,7 @@ SUCCESS   │
 
 #### 5.3.2 鼠标点击动作节点 (MouseClickNode)
 
-**功能描述**：模拟鼠标点击操作。
+**功能描述**：模拟鼠标点击操作，支持多次点击。
 
 **执行逻辑**：
 ```
@@ -1454,7 +1551,8 @@ SUCCESS   │
    - press: 按下 → 等待时长 → 抬起
    - down: 仅按下
    - up: 仅抬起
-4. 返回执行结果
+4. 多次点击时，重复步骤3（间隔 click_interval 毫秒）
+5. 返回执行结果
 ```
 
 **属性参数**：
@@ -1464,6 +1562,8 @@ SUCCESS   │
 | button | string | "left" | 鼠标按钮 (left/right/middle) |
 | action | string | "press" | 动作类型 (press/down/up) |
 | duration | int | 0 | 按住时长（毫秒） |
+| click_count | int | 1 | 点击次数（-1为无限循环点击） |
+| click_interval | int | 100 | 多次点击间隔（毫秒） |
 | position | tuple | null | 点击位置 (x,y) |
 | use_blackboard | bool | false | 点击最近检测点 |
 | position_key | string | "last_detection_position" | 黑板变量名 |
@@ -1483,10 +1583,17 @@ SUCCESS   │
 - right: 右键
 - middle: 中键
 
+**click_count 说明**：
+- `click_count = 1`：单击（默认）
+- `click_count = 2`：双击
+- `click_count = 3`：三击
+- `click_count = -1`：无限循环点击（直到行为树停止）
+
 **使用场景**：
 - 点击按钮、链接
 - 拖拽操作（配合 down/up）
 - 长按操作（设置 duration）
+- 双击操作（设置 click_count=2）
 
 **示例配置**：
 ```
@@ -1494,6 +1601,13 @@ SUCCESS   │
   button: left
   action: press
   duration: 0
+  click_count: 1
+
+双击:
+  button: left
+  action: press
+  click_count: 2
+  click_interval: 100
 
 长按500ms:
   button: left
@@ -1508,9 +1622,44 @@ SUCCESS   │
 
 ---
 
-#### 5.3.3 鼠标移动动作节点 (MouseMoveNode)
+#### 5.3.3 鼠标滚轮动作节点 (MouseScrollNode)
 
-**功能描述**：移动鼠标到指定位置。
+**功能描述**：模拟鼠标滚轮滚动操作。
+
+**执行逻辑**：
+```
+1. 确定滚动位置（固定位置或黑板位置）
+2. 移动鼠标到目标位置（可选）
+3. 执行滚轮滚动
+4. 返回执行结果
+```
+
+**属性参数**：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| amount | int | 1 | 滚动量（正数向上，负数向下） |
+| position | tuple | null | 滚动位置 (x,y)，null则在当前位置滚动 |
+| use_blackboard | bool | false | 在最近检测点滚动 |
+| position_key | string | "last_detection_position" | 黑板变量名 |
+| repeat_count | int | 1 | 重复次数 |
+| timeout_ms | int | 0 | 超时时间 |
+
+**滚动量说明**：
+- `amount > 0`：向上滚动（如 amount=3 向上滚动3格）
+- `amount < 0`：向下滚动（如 amount=-3 向下滚动3格）
+- 每个单位约等于鼠标滚轮的一格
+
+**使用场景**：
+- 页面滚动
+- 缩放操作（配合 Ctrl 键）
+- 列表导航
+
+---
+
+#### 5.3.4 鼠标移动动作节点 (MouseMoveNode)
+
+**功能描述**：移动鼠标到指定位置，支持拖拽操作。
 
 **属性参数**：
 
@@ -1518,17 +1667,49 @@ SUCCESS   │
 |------|------|--------|------|
 | position | tuple | null | 目标位置 (x,y) |
 | use_blackboard | bool | false | 移动到最近检测点 |
-| position_key | string | "last_ocr_position" | 黑板变量名 |
+| position_key | string | "last_detection_position" | 黑板变量名 |
 | relative | bool | false | 相对移动 |
 | smooth | bool | true | 平滑移动 |
+| move_type | string | "move" | 移动类型（move/drag） |
+| drag_button | string | "left" | 拖拽使用的鼠标按钮 |
+| end_position | tuple | null | 拖拽终点位置 (x,y) |
+| use_blackboard_end | bool | false | 使用黑板获取终点位置 |
+| position_key_end | string | "last_detection_position" | 终点位置黑板变量名 |
+| drag_duration | int | 500 | 拖拽持续时间（毫秒） |
 | repeat_count | int | 1 | 重复次数 |
 | timeout_ms | int | 0 | 超时时间 |
+
+**移动类型说明**：
+- `move`：普通移动，鼠标移动到目标位置
+- `drag`：拖拽操作，按下鼠标按钮后移动到终点位置再释放
+
+**拖拽操作流程**：
+```
+1. 按下指定鼠标按钮（drag_button）
+2. 移动到终点位置（end_position 或黑板变量）
+3. 等待 drag_duration 毫秒
+4. 释放鼠标按钮
+```
 
 ---
 
 #### 5.3.4 延时动作节点 (DelayNode)
 
 **功能描述**：等待指定时间。
+
+**重要特性**：延时节点是**非阻塞**的，执行期间返回 `RUNNING` 状态，不会阻塞整个行为树的执行。
+
+**执行逻辑**：
+```
+开始延时
+  │
+  ▼
+检查已过时间 < duration_ms ── 是 ──► 返回 RUNNING（下一帧继续检查）
+  │
+  │ 否（时间到）
+  ▼
+返回 SUCCESS
+```
 
 **属性参数**：
 
@@ -1655,11 +1836,18 @@ OCR检测"完成" → 报警节点（异步播放）→ 发送按键"Ctrl+S"保�
 
 #### 5.4.1 组合节点装饰参数
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| retry_count | int | 失败后重试次数（0不重试） |
-| repeat_count | int | 整体重复次数（1不重复，-1无限） |
-| timeout_ms | int | 执行超时时间（毫秒，0不限） |
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| retry_count | int | 0 | 失败后重试次数（-1无限重试，无上限） |
+| repeat_count | int | 1 | 整体重复次数（1不重复，-1无限） |
+| timeout_ms | int | 0 | 执行超时时间（毫秒，0不限） |
+
+**retry_count 执行次数说明**：
+- `retry_count = 0`：执行 1 次（初始执行，不重试）
+- `retry_count = 1`：执行 2 次（初始执行 + 1 次重试）
+- `retry_count = N`：执行 N+1 次（初始执行 + N 次重试）
+- `retry_count = -1`：无限重试，直到成功或手动停止
+- 总执行次数 = retry_count + 1（有限重试时）
 
 **执行流程**：
 ```
@@ -1687,10 +1875,12 @@ OCR检测"完成" → 报警节点（异步播放）→ 发送按键"Ctrl+S"保�
 
 #### 5.4.2 条件节点装饰参数
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| invert | bool | 取反检测结果 |
-| retry_count | int | 失败后重试次数 |
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| invert | bool | false | 取反检测结果 |
+| retry_count | int | 0 | 失败重试次数（-1无限重试，无上限） |
+| timeout_ms | int | 0 | 检测超时时间（毫秒，0不限） |
+| check_interval_ms | int | 300 | 检测间隔（毫秒，最小30，用于减少CPU占用） |
 
 **取反逻辑**：
 ```
@@ -1699,6 +1889,17 @@ SUCCESS  →  FAILURE
 FAILURE  →  SUCCESS
 RUNNING  →  RUNNING
 ```
+
+**检测间隔说明**：
+- `check_interval_ms` 用于控制条件检测的频率
+- 默认值 300ms，最小值 30ms
+- 适当增加间隔可减少 CPU 占用
+- 对于需要快速响应的场景，可降低间隔（最小 30ms）
+
+**无限重试说明**：
+- `retry_count = -1` 表示无限重试，直到条件满足
+- 建议配合 `timeout_ms` 使用，避免无限等待
+- 可通过手动停止行为树来中止无限重试
 
 #### 5.4.3 动作节点装饰参数
 
@@ -1726,10 +1927,12 @@ RUNNING  →  RUNNING
 | 按键 | KeyPressNode | 动作 | 模拟键盘按键 | ✓ (串联执行) |
 | 点击 | MouseClickNode | 动作 | 模拟鼠标点击 | ✓ (串联执行) |
 | 移动 | MouseMoveNode | 动作 | 移动鼠标位置 | ✓ (串联执行) |
+| 滚轮 | MouseScrollNode | 动作 | 模拟鼠标滚轮滚动 | ✓ (串联执行) |
 | 延时 | DelayNode | 动作 | 等待指定时间 | ✓ (串联执行) |
 | 设变量 | SetVariableNode | 动作 | 设置变量值 | ✓ (串联执行) |
 | 脚本 | ScriptNode | 动作 | 执行脚本文件 | ✓ (串联执行) |
 | 代码 | CodeNode | 动作 | 执行代码文件 | ✓ (串联执行) |
+| 报警 | AlarmNode | 动作 | 播放报警音频 | ✓ (串联执行) |
 
 **说明**：
 - 组合节点：子节点按节点类型定义的逻辑执行
@@ -1740,14 +1943,15 @@ RUNNING  →  RUNNING
 
 | 变量名 | 类型 | 说明 |
 |--------|------|------|
-| last_detection_position | tuple | 最后检测位置（OCR/图像/颜色检测统一使用） |
+| last_detection_position | tuple | 最后检测位置（OCR/图像/颜色/数字检测统一使用） |
 | last_number_value | int/float | 最后识别的数字值 |
 | execution_count | int | 执行计数 |
 
 **说明**：
-- `last_detection_position`：所有检测节点（OCR/图像/颜色）检测成功后，会将检测到的位置保存到此变量
+- `last_detection_position`：所有检测节点（OCR/图像/颜色/数字）检测成功后，会将检测到的位置统一保存到此变量
 - 保存的是**绝对坐标**（屏幕坐标），而非相对于检测区域的坐标
 - 点击节点勾选"点击最近检测点"时，会从此变量读取位置
+- 数字条件节点检测成功后，同时将数字值保存到 `last_number_value`
 
 ### 6.3 文件格式版本历史
 
@@ -1803,15 +2007,18 @@ A: 确保修改属性后已保存（`Ctrl+S`），或切换选中节点时会自
 
 ## 文档版本
 
-- **版本**: 2.1
+- **版本**: 2.4
 - **创建日期**: 2026-03-30
-- **更新日期**: 2026-04-04
-- **适用项目版本**: AutoDoor v1.0.0
+- **更新日期**: 2026-04-06
+- **适用项目版本**: AutoDoor v3.0.5
 
 ### 更新历史
 
 | 版本 | 日期 | 更新内容 |
 |------|------|----------|
+| 2.4 | 2026-04-06 | 新增：条件节点检测间隔参数(check_interval_ms)；完善：retry_count支持-1无限重试，移除上限限制；优化：ScriptNode线程池管理，添加竞态条件保护；完善：节点abort中止机制；更新：并行节点中止RUNNING子节点逻辑 |
+| 2.3 | 2026-04-06 | 新增：节点中止接口（abort方法）；完善：并行节点完成时中止RUNNING子节点的行为；新增：CodeNode/ScriptNode/MouseClickNode 中止逻辑实现；更新：并行节点算法伪代码 |
+| 2.2 | 2026-04-06 | 根据代码分析报告更新：统一黑板变量为 last_detection_position；补充空子节点行为说明；完善 retry_count/repeat_count 执行次数说明；补充并行节点缓存机制；补充无限循环子节点执行时机；新增 MouseScrollNode 滚轮节点；补充 MouseClickNode 多次点击参数；补充 MouseMoveNode 拖拽参数；补充 NumberConditionNode 预处理参数；补充 DelayNode 非阻塞特性说明 |
 | 2.1 | 2026-04-04 | 新增：顺序节点 `continue_on_failure` 参数，支持失败后继续执行后续节点 |
 | 2.0 | 2026-04-01 | 新增：子节点执行间隔、数字提取模式、鼠标点击动作类型和按住时长；优化：统一黑板变量、OCR/数字节点图像预处理、图像匹配阈值百分比格式 |
 | 1.2 | 2026-03-30 | 新增：节点串联执行说明、常见问题解答 |

@@ -533,7 +533,16 @@ def update_window_preview(app, hwnd):
             from utils.window_capture import capture_window
             image = capture_window(hwnd)
             if image:
-                image_resized = image.resize((196, 116), PILImage.LANCZOS)
+                if image.width <= 0 or image.height <= 0:
+                    app.logging_manager.log_message("窗口截图失败: 图像尺寸无效")
+                    return
+                
+                try:
+                    image_resized = image.resize((196, 116), PILImage.LANCZOS)
+                except Exception:
+                    app.logging_manager.log_message("窗口截图失败: 图像缩放失败")
+                    return
+                
                 ctk_image = ctk.CTkImage(light_image=image_resized, size=(196, 116))
                 app.root.after(0, lambda: update_preview_label(app, ctk_image))
             else:
@@ -546,6 +555,13 @@ def update_window_preview(app, hwnd):
 
 def update_preview_label(app, ctk_image):
     if hasattr(app, 'bg_window_preview'):
+        if hasattr(app, 'bg_window_preview_image') and app.bg_window_preview_image:
+            try:
+                old_image = app.bg_window_preview_image
+                del old_image
+            except:
+                pass
+        
         app.bg_window_preview.configure(image=ctk_image, text='')
         app.bg_window_preview_image = ctk_image
 

@@ -64,6 +64,19 @@ class Node(ABC):
         """重置节点状态"""
         pass
     
+    def abort(self, context: "ExecutionContext") -> None:
+        """
+        中止节点执行
+        
+        当节点被外部中止时调用（如并行节点完成时中止其他RUNNING子节点）。
+        子类可以重写此方法以实现特定的中止逻辑（如终止进程、停止脚本等）。
+        
+        Args:
+            context: 执行上下文
+        """
+        self.reset()
+        context.notify_node_status(self.node_id, "aborted")
+    
     @abstractmethod
     def get_children(self) -> List["Node"]:
         """获取子节点列表"""
@@ -115,13 +128,27 @@ class Node(ABC):
 
 
 class CompositeNode(Node):
-    """组合节点基类 - 包含多个子节点，支持重试、重复、超时装饰参数"""
+    """组合节点基类 - 包含多个子节点，支持重试、重复、超时装饰参数
+    
+    装饰参数：
+    - retry_count: 失败重试次数（-1表示无限重试，无上限）
+    - repeat_count: 整体重复次数（1不重复，-1无限）
+    - timeout_ms: 超时时间（毫秒，0不限）
+    - child_interval: 子节点执行间隔（毫秒）
+    - continue_on_failure: 失败后是否继续执行（仅SequenceNode）
+    """
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
         self.children: List[Node] = []
         self._current_index = 0
-        self.retry_count = self.config.get("retry_count", 0)
+        
+        retry_val = self.config.get("retry_count", 0)
+        if retry_val == -1:
+            self.retry_count = -1
+        else:
+            self.retry_count = max(0, retry_val)
+        
         self.repeat_count = self.config.get("repeat_count", 1)
         self.timeout_ms = self.config.get("timeout_ms", 0)
         self.child_interval = self.config.get("child_interval", 0)
@@ -189,6 +216,13 @@ class CompositeNode(Node):
             return NodeStatus.RUNNING
         
         if status == NodeStatus.FAILURE:
+            if self.retry_count == -1:
+                context.log(f"{self.name}: 失败，无限重试中...")
+                self._reset_children()
+                self._current_index = 0
+                self._has_failure = False
+                return NodeStatus.RUNNING
+            
             if self._current_retry < self.retry_count:
                 self._current_retry += 1
                 context.log(f"{self.name}: 重试 {self._current_retry}/{self.retry_count}")
@@ -244,13 +278,30 @@ class CompositeNode(Node):
 
 
 class ConditionNode(Node):
-    """条件节点基类 - 检查条件是否满足，支持取反、重试装饰参数，支持子节点串联执行"""
+    """条件节点基类 - 检查条件是否满足，支持取反、重试装饰参数，支持子节点串联执行
+    
+    装饰参数：
+    - invert: 结果取反
+    - retry_count: 失败重试次数（-1表示无限重试，无上限）
+    - timeout_ms: 超时时间（毫秒，0表示不限）
+    - check_interval_ms: 检测间隔（毫秒，用于减少CPU占用，0表示不等待）
+    """
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
         self.invert = self.config.get("invert", False)
-        self.retry_count = self.config.get("retry_count", 0)
+        
+        retry_val = self.config.get("retry_count", 0)
+        if retry_val == -1:
+            self.retry_count = -1
+        else:
+            self.retry_count = max(0, retry_val)
+        
+        self.timeout_ms = self.config.get("timeout_ms", 0)
+        self.check_interval_ms = self.config.get("check_interval_ms", 300)
         self._current_retry = 0
+        self._start_time: Optional[float] = None
+        self._last_check_time: Optional[float] = None
         self.children: List[Node] = []
         self._current_child_index = 0
         self._condition_done = False
@@ -279,12 +330,34 @@ class ConditionNode(Node):
             context.notify_node_status(self.node_id, "running")
         
         if not self._condition_done:
-            if self._current_retry > self.retry_count:
+            if self.timeout_ms > 0:
+                if self._start_time is None:
+                    self._start_time = time.time() * 1000
+                
+                elapsed = time.time() * 1000 - self._start_time
+                if elapsed >= self.timeout_ms:
+                    context.log(f"{self.name}: 检测超时 ({elapsed:.0f}ms)")
+                    self._current_retry = 0
+                    self._start_time = None
+                    self._last_check_time = None
+                    self._status = NodeStatus.FAILURE
+                    context.notify_node_status(self.node_id, "failure")
+                    return NodeStatus.FAILURE
+            
+            if self.check_interval_ms > 0 and self._last_check_time is not None:
+                elapsed = time.time() * 1000 - self._last_check_time
+                if elapsed < self.check_interval_ms:
+                    return NodeStatus.RUNNING
+            
+            if self.retry_count != -1 and self._current_retry > self.retry_count:
                 self._current_retry = 0
+                self._start_time = None
+                self._last_check_time = None
                 self._status = NodeStatus.FAILURE
                 context.notify_node_status(self.node_id, "failure")
                 return NodeStatus.FAILURE
             
+            self._last_check_time = time.time() * 1000
             status = self._execute_condition(context)
             
             if self.invert:
@@ -298,6 +371,10 @@ class ConditionNode(Node):
                 return status
             
             if status == NodeStatus.FAILURE:
+                if self.retry_count == -1:
+                    self._reset_for_retry()
+                    return NodeStatus.RUNNING
+                
                 self._current_retry += 1
                 if self._current_retry <= self.retry_count:
                     context.log(f"{self.name}: 重试 {self._current_retry}/{self.retry_count}")
@@ -305,11 +382,14 @@ class ConditionNode(Node):
                     return NodeStatus.RUNNING
                 
                 self._current_retry = 0
+                self._start_time = None
+                self._last_check_time = None
                 self._status = NodeStatus.FAILURE
                 context.notify_node_status(self.node_id, "failure")
                 return NodeStatus.FAILURE
             
             self._current_retry = 0
+            self._start_time = None
             self._condition_done = True
             
             if not self.children:
@@ -683,6 +763,7 @@ class ParallelNode(CompositeNode):
         success_count = 0
         failure_count = 0
         running_count = 0
+        running_children = []
         
         for i, child in enumerate(self.children):
             if not child.enabled:
@@ -707,9 +788,11 @@ class ParallelNode(CompositeNode):
                 failure_count += 1
             elif status == NodeStatus.RUNNING:
                 running_count += 1
+                running_children.append(child)
         
         if self.success_policy == self.SUCCESS_POLICY_ONE:
             if success_count > 0:
+                self._abort_running_children(context, running_children)
                 self._status = NodeStatus.SUCCESS
                 return NodeStatus.SUCCESS
         
@@ -718,12 +801,33 @@ class ParallelNode(CompositeNode):
             return NodeStatus.RUNNING
         
         if self.success_policy == self.SUCCESS_POLICY_ALL:
-            result = NodeStatus.SUCCESS if success_count == len([c for c in self.children if c.enabled]) else NodeStatus.FAILURE
+            enabled_count = len([c for c in self.children if c.enabled])
+            if success_count == enabled_count:
+                self._abort_running_children(context, running_children)
+                result = NodeStatus.SUCCESS
+            else:
+                result = NodeStatus.FAILURE
         else:
-            result = NodeStatus.SUCCESS if success_count > 0 else NodeStatus.FAILURE
+            if success_count > 0:
+                self._abort_running_children(context, running_children)
+                result = NodeStatus.SUCCESS
+            else:
+                result = NodeStatus.FAILURE
         
         self._status = result
         return result
+    
+    def _abort_running_children(self, context: "ExecutionContext", running_children: List["Node"]) -> None:
+        """
+        中止所有 RUNNING 状态的子节点
+        
+        Args:
+            context: 执行上下文
+            running_children: RUNNING 状态的子节点列表
+        """
+        for child in running_children:
+            if child.status == NodeStatus.RUNNING:
+                child.abort(context)
     
     def reset(self) -> None:
         super().reset()

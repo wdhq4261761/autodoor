@@ -111,17 +111,19 @@ NODE_CONFIG_SCHEMAS = {
 
 CONDITION_DECORATOR_FIELDS = [
     {"key": "invert", "label": "结果取反", "type": "bool"},
-    {"key": "retry_count", "label": "失败重试次数", "type": "number", "min": 0, "max": 10, "default": 0},
+    {"key": "retry_count", "label": "失败重试次数(-1无限)", "type": "number", "min": -1, "default": 0},
+    {"key": "timeout_ms", "label": "超时时间(ms,0不限)", "type": "number", "min": 0, "default": 0},
+    {"key": "check_interval_ms", "label": "检测间隔(ms)", "type": "number", "min": 30, "default": 300},
 ]
 
 ACTION_DECORATOR_FIELDS = [
-    {"key": "repeat_count", "label": "重复次数(1不重复,-1无限)", "type": "number", "min": 1, "default": 1},
+    {"key": "repeat_count", "label": "重复次数(1不重复,-1无限)", "type": "number", "min": -1, "default": 1},
     {"key": "timeout_ms", "label": "超时时间(ms,0不限)", "type": "number", "min": 0, "default": 0},
 ]
 
 COMPOSITE_DECORATOR_FIELDS = [
-    {"key": "retry_count", "label": "失败重试次数", "type": "number", "min": 0, "max": 10, "default": 0},
-    {"key": "repeat_count", "label": "重复次数(1不重复,-1无限)", "type": "number", "min": 1, "default": 1},
+    {"key": "retry_count", "label": "失败重试次数(-1无限)", "type": "number", "min": -1, "default": 0},
+    {"key": "repeat_count", "label": "重复次数(1不重复,-1无限)", "type": "number", "min": -1, "default": 1},
     {"key": "timeout_ms", "label": "超时时间(ms,0不限)", "type": "number", "min": 0, "default": 0},
 ]
 

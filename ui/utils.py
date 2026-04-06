@@ -199,6 +199,7 @@ def update_image_preview(image_preview, preview_container, image_path):
     if not image_preview or not image_path:
         return False
     
+    image = None
     try:
         if not os.path.exists(image_path):
             return False
@@ -206,6 +207,9 @@ def update_image_preview(image_preview, preview_container, image_path):
         from PIL import Image as PILImage
         image = PILImage.open(image_path)
         orig_w, orig_h = image.size
+        
+        if orig_w <= 0 or orig_h <= 0:
+            return False
         
         if preview_container:
             preview_container.update_idletasks()
@@ -219,10 +223,17 @@ def update_image_preview(image_preview, preview_container, image_path):
             max_w, max_h = 140, 70
         
         ratio = min(max_w / orig_w, max_h / orig_h)
-        new_w = int(orig_w * ratio)
-        new_h = int(orig_h * ratio)
+        new_w = max(1, int(orig_w * ratio))
+        new_h = max(1, int(orig_h * ratio))
         
         if CTK_AVAILABLE:
+            if hasattr(image_preview, 'image') and image_preview.image:
+                try:
+                    old_image = image_preview.image
+                    del old_image
+                except:
+                    pass
+            
             ctk_image = ctk.CTkImage(light_image=image, size=(new_w, new_h))
             image_preview.configure(image=ctk_image, text='')
             image_preview.image = ctk_image
@@ -231,6 +242,12 @@ def update_image_preview(image_preview, preview_container, image_path):
         
     except Exception:
         return False
+    finally:
+        if image is not None:
+            try:
+                image.close()
+            except:
+                pass
 
 
 def select_template_image(app, groups, index, log_prefix="", log_func=None):
