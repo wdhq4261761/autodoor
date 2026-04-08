@@ -32,6 +32,8 @@ class OCRConditionNode(ConditionNode):
         save_position = self.config.get("save_position", True)
         position_key = self.config.get("position_key", "last_detection_position")
         
+        preprocess_mode = "chinese" if language.startswith('chi') else "standard"
+        
         try:
             screenshot = context.get_screenshot(region)
             
@@ -39,14 +41,24 @@ class OCRConditionNode(ConditionNode):
                 context.log(f"OCR节点 {self.name}: 截图失败")
                 return NodeStatus.FAILURE
             
-            processed_image = ImagePreprocessor.preprocess(screenshot, "standard")
+            context.log(f"OCR节点 {self.name}: 原始图像尺寸 {screenshot.size}, 模式 {screenshot.mode}")
+            
+            processed_image = ImagePreprocessor.preprocess(screenshot, preprocess_mode)
             if processed_image is None:
                 context.log(f"OCR节点 {self.name}: 图像预处理失败")
                 return NodeStatus.FAILURE
             
+            context.log(f"OCR节点 {self.name}: 预处理后图像尺寸 {processed_image.size}, 模式 {processed_image.mode}")
+            
             from utils.recognition import OCRRecognizer
             
             text = OCRRecognizer.get_text(processed_image, language)
+            
+            if text:
+                context.log(f"OCR节点 {self.name}: 识别到文字 '{text.strip()}'")
+            else:
+                context.log(f"OCR节点 {self.name}: 未识别到任何文字")
+                context.log(f"OCR节点 {self.name}: 语言={language}, 预处理={preprocess_mode}, 区域={region}")
             
             if not keywords:
                 return NodeStatus.SUCCESS
@@ -81,6 +93,6 @@ class OCRConditionNode(ConditionNode):
             "language": self.config.get("language", "eng"),
             "match_mode": self.config.get("match_mode", "any"),
             "save_position": self.config.get("save_position", True),
-            "position_key": self.config.get("position_key", "last_ocr_position"),
+            "position_key": self.config.get("position_key", "last_detection_position"),
         }
         return data

@@ -52,19 +52,55 @@ class VariableConditionNode(ConditionNode):
                 context.log(f"变量条件节点 {self.name}: 未知的运算符 {operator}")
                 return NodeStatus.FAILURE
             
+            compare_value_typed = self._convert_compare_value(actual_value, compare_value, operator)
+            
             compare_func = self.OPERATORS[operator]
-            result = compare_func(actual_value, compare_value)
+            result = compare_func(actual_value, compare_value_typed)
             
             if result:
-                context.log(f"变量条件节点 {self.name}: {variable_name} {operator} {compare_value} -> 满足")
+                context.log(f"变量条件节点 {self.name}: {variable_name} {operator} {compare_value_typed} -> 满足")
                 return NodeStatus.SUCCESS
             else:
-                context.log(f"变量条件节点 {self.name}: {variable_name} {operator} {compare_value} -> 不满足 (实际值: {actual_value})")
+                context.log(f"变量条件节点 {self.name}: {variable_name} {operator} {compare_value_typed} -> 不满足 (实际值: {actual_value})")
                 return NodeStatus.FAILURE
                 
         except Exception as e:
             context.log(f"变量条件节点 {self.name}: 执行出错 - {e}")
             return NodeStatus.FAILURE
+    
+    def _convert_compare_value(self, actual_value, compare_value, operator: str):
+        """
+        根据实际值类型转换比较值
+        
+        当实际值为数字时，尝试将比较值转换为相同类型
+        当实际值为字符串时，保持比较值为字符串
+        """
+        if operator in ("exists", "not_exists"):
+            return compare_value
+        
+        if actual_value is None:
+            return compare_value
+        
+        if isinstance(actual_value, bool):
+            if isinstance(compare_value, str):
+                if compare_value.lower() in ("true", "1", "yes"):
+                    return True
+                elif compare_value.lower() in ("false", "0", "no"):
+                    return False
+            return compare_value
+        
+        if isinstance(actual_value, (int, float)):
+            if isinstance(compare_value, str):
+                try:
+                    if "." in compare_value:
+                        return float(compare_value)
+                    else:
+                        return int(compare_value)
+                except (ValueError, TypeError):
+                    pass
+            return compare_value
+        
+        return compare_value
     
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()

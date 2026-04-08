@@ -9,10 +9,81 @@ except ImportError:
     CV2_AVAILABLE = False
 
 
-class OCRRecognizer:
-    """统一的OCR识别器"""
+def check_language_available(lang: str) -> bool:
+    """
+    检查语言包是否可用
     
-    TESSERACT_CONFIG = r'--psm 6 --oem 3'
+    Args:
+        lang: 语言代码 (如 'eng', 'chi_sim', 'chi_tra')
+    
+    Returns:
+        bool: 语言包是否可用
+    """
+    try:
+        available_langs = pytesseract.get_languages()
+        return lang in available_langs
+    except Exception:
+        return False
+
+
+def get_available_languages() -> List[str]:
+    """
+    获取所有可用的语言包列表
+    
+    Returns:
+        List[str]: 可用语言代码列表
+    """
+    try:
+        return pytesseract.get_languages()
+    except Exception:
+        return []
+
+
+class OCRRecognizer:
+    """
+    统一的OCR识别器
+    
+    支持多种识别场景，自动选择最优参数：
+    - 英文关键词识别
+    - 英文多行文本识别
+    - 中文关键词识别
+    - 中文多行文本识别
+    """
+    
+    # Tesseract配置常量
+    # PSM (Page Segmentation Mode):
+    #   3 = 完全自动分页（适合复杂布局）
+    #   6 = 单一均匀文本块（适合按钮、标签）
+    #   7 = 单行文本（适合单行文字）
+    #   11 = 稀疏文本（适合散布的文字）
+    # OEM (OCR Engine Mode):
+    #   3 = LSTM引擎（最佳识别质量）
+    
+    CONFIG_ENG_KEYWORD = r'--psm 7 --oem 3'
+    CONFIG_ENG_TEXT = r'--psm 6 --oem 3'
+    CONFIG_CHI_KEYWORD = r'--psm 7 --oem 3'
+    CONFIG_CHI_TEXT = r'--psm 3 --oem 3'
+    
+    @staticmethod
+    def _get_tesseract_config(language: str, mode: str = "keyword") -> str:
+        """
+        根据语言和模式获取最优的tesseract配置
+        
+        Args:
+            language: 语言代码 ('eng', 'chi_sim', 'chi_tra')
+            mode: 识别模式
+                - "keyword": 关键词识别（按钮、标签等）
+                - "text": 多行文本识别（段落、文档等）
+        
+        Returns:
+            str: tesseract配置字符串
+        """
+        is_chinese = language.startswith('chi')
+        
+        if mode == "keyword":
+            return OCRRecognizer.CONFIG_CHI_KEYWORD if is_chinese else OCRRecognizer.CONFIG_ENG_KEYWORD
+        else:
+            return OCRRecognizer.CONFIG_CHI_TEXT if is_chinese else OCRRecognizer.CONFIG_ENG_TEXT
     
     @staticmethod
     def recognize(image, keywords: str, language: str = "eng", 
@@ -47,7 +118,7 @@ class OCRRecognizer:
                     return (False, None, None)
                 return (False, None, None)
             
-            text = pytesseract.image_to_string(image, lang=language, config=OCRRecognizer.TESSERACT_CONFIG)
+            text = pytesseract.image_to_string(image, lang=language, config=OCRRecognizer._get_tesseract_config(language, "keyword"))
             text_lower = text.lower()
             
             if not any(kw in text_lower for kw in keyword_list):
@@ -88,7 +159,7 @@ class OCRRecognizer:
         try:
             data = pytesseract.image_to_data(
                 image, lang=language, 
-                config=OCRRecognizer.TESSERACT_CONFIG, 
+                config=OCRRecognizer._get_tesseract_config(language, "keyword"), 
                 output_type=pytesseract.Output.DICT
             )
             
@@ -109,19 +180,39 @@ class OCRRecognizer:
             return None
     
     @staticmethod
-    def get_text(image, language: str = "eng") -> Optional[str]:
+    def get_text(image, language: str = "eng", mode: str = "keyword") -> Optional[str]:
         """
         获取图像中的所有文字
         
         Args:
             image: PIL.Image 处理后的图像
             language: 识别语言
+            mode: 识别模式 ("keyword" 或 "text")
         
         Returns:
             str: 识别的文字，失败返回None
         """
         try:
-            return pytesseract.image_to_string(image, lang=language, config=OCRRecognizer.TESSERACT_CONFIG)
+            if mode == "keyword":
+                # 对于关键词识别，尝试多种PSM模式以提高识别率
+                # PSM 7: 单行文本
+                # PSM 6: 单一文本块
+                # PSM 11: 稀疏文本
+                psm_modes = [7, 6, 11]
+                
+                for psm in psm_modes:
+                    config = f'--psm {psm} --oem 3'
+                    try:
+                        text = pytesseract.image_to_string(image, lang=language, config=config)
+                        if text and text.strip():
+                            return text
+                    except Exception:
+                        continue
+                
+                return None
+            else:
+                # 文本模式使用配置的PSM
+                return pytesseract.image_to_string(image, lang=language, config=OCRRecognizer._get_tesseract_config(language, mode))
         except Exception:
             return None
 
@@ -270,19 +361,64 @@ class ColorRecognizer:
 
 
 class NumberRecognizer:
-    """统一的数字识别器"""
+    """
+    统一的数字识别器
     
-    NUMBER_CONFIG = r'--psm 7 --oem 3'
-    MIN_CONFIDENCE = 50
+    支持多种数字识别场景：
+    - 单行数字识别
+    - 多行数字识别
+    - 分数格式识别 (x/y)
+    - 带符号数字识别 (正负数)
+    """
+    
+    # 数字识别配置
+    # PSM 7: 单行文本（适合单行数字）
+    # PSM 6: 单一文本块（适合多行数字）
+    # PSM 11: 稀疏文本（适合散布的数字）
+    
+    # 默认数字白名单：数字、小数点、负号、斜杠（分数）
+    DEFAULT_WHITELIST = '0123456789.-/'
+    
+    CONFIG_SINGLE_LINE = r'--psm 7 --oem 3'
+    CONFIG_MULTI_LINE = r'--psm 6 --oem 3'
+    CONFIG_SPARSE = r'--psm 11 --oem 3'
     
     @staticmethod
-    def recognize(image, whitelist: str = None) -> Optional[str]:
+    def _get_number_config(mode: str = "single", whitelist: str = None) -> str:
+        """
+        根据模式获取数字识别配置
+        
+        Args:
+            mode: 识别模式
+                - "single": 单行数字（默认）
+                - "multi": 多行数字
+                - "sparse": 稀疏数字
+            whitelist: 字符白名单
+        
+        Returns:
+            str: tesseract配置字符串
+        """
+        if mode == "multi":
+            base_config = NumberRecognizer.CONFIG_MULTI_LINE
+        elif mode == "sparse":
+            base_config = NumberRecognizer.CONFIG_SPARSE
+        else:
+            base_config = NumberRecognizer.CONFIG_SINGLE_LINE
+        
+        if whitelist:
+            return f'{base_config} -c tessedit_char_whitelist={whitelist}'
+        else:
+            return f'{base_config} -c tessedit_char_whitelist={NumberRecognizer.DEFAULT_WHITELIST}'
+    
+    @staticmethod
+    def recognize(image, whitelist: str = None, mode: str = "single") -> Optional[str]:
         """
         数字OCR识别
         
         Args:
             image: PIL.Image 图像
-            whitelist: 允许的字符白名单（可选）
+            whitelist: 允许的字符白名单（可选，默认使用数字白名单）
+            mode: 识别模式 ("single", "multi", "sparse")
         
         Returns:
             str: 识别的数字字符串，失败返回None
@@ -290,10 +426,7 @@ class NumberRecognizer:
         try:
             import pytesseract
             
-            if whitelist:
-                config = f'--psm 7 --oem 3 -c tessedit_char_whitelist={whitelist}'
-            else:
-                config = '--psm 7 --oem 3'
+            config = NumberRecognizer._get_number_config(mode, whitelist)
             text = pytesseract.image_to_string(image, lang='eng', config=config)
             
             text = text.strip().replace('\n', '').replace('\r', '')
@@ -303,13 +436,14 @@ class NumberRecognizer:
             return None
     
     @staticmethod
-    def recognize_with_confidence(image, whitelist: str = None) -> Tuple[str, int, str]:
+    def recognize_with_confidence(image, whitelist: str = None, mode: str = "single") -> Tuple[str, int, str]:
         """
         数字OCR识别（带置信度）
         
         Args:
             image: PIL.Image 图像
-            whitelist: 允许的字符白名单（可选）
+            whitelist: 允许的字符白名单（可选，默认使用数字白名单）
+            mode: 识别模式 ("single", "multi", "sparse")
         
         Returns:
             tuple: (高置信度文本, 平均置信度, 全部识别文本)
@@ -320,10 +454,7 @@ class NumberRecognizer:
         try:
             import pytesseract
             
-            if whitelist:
-                config = f'--psm 7 --oem 3 -c tessedit_char_whitelist={whitelist}'
-            else:
-                config = '--psm 7 --oem 3'
+            config = NumberRecognizer._get_number_config(mode, whitelist)
             data = pytesseract.image_to_data(
                 image, lang='eng', 
                 config=config, 
@@ -463,14 +594,15 @@ class NumberRecognizer:
         return None
     
     @staticmethod
-    def find_number_position(image, target_number: int = None, whitelist: str = None) -> Optional[Tuple[int, int]]:
+    def find_number_position(image, target_number: int = None, whitelist: str = None, mode: str = "single") -> Optional[Tuple[int, int]]:
         """
         查找数字在图像中的位置
         
         Args:
             image: PIL.Image 处理后的图像
             target_number: 目标数字（可选，如果指定则只查找该数字的位置）
-            whitelist: 允许的字符白名单（可选）
+            whitelist: 允许的字符白名单（可选，默认使用数字白名单）
+            mode: 识别模式 ("single", "multi", "sparse")
         
         Returns:
             tuple: (center_x, center_y) 数字中心位置，未找到返回None
@@ -479,10 +611,7 @@ class NumberRecognizer:
             import pytesseract
             import re
             
-            if whitelist:
-                config = f'--psm 7 --oem 3 -c tessedit_char_whitelist={whitelist}'
-            else:
-                config = '--psm 7 --oem 3'
+            config = NumberRecognizer._get_number_config(mode, whitelist)
             data = pytesseract.image_to_data(
                 image, lang='eng', 
                 config=config, 

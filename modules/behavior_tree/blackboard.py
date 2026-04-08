@@ -18,9 +18,7 @@ class Blackboard:
     """
     
     BUILTIN_VARS = {
-        "last_ocr_position": None,
-        "last_image_position": None,
-        "last_color_position": None,
+        "last_detection_position": None,
         "last_number_value": None,
         "execution_count": 0,
     }

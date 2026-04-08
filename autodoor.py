@@ -34,7 +34,7 @@ from modules.color import ColorRecognitionManager
 from modules.image import ImageDetectionManager
 from modules.background import BackgroundManager
 
-VERSION = "v3.0.5"
+VERSION = "v3.0.6"
 
 
 class AutoDoorOCR:
@@ -420,13 +420,58 @@ class AutoDoorOCR:
         self.image_detection_manager = ImageDetectionManager(self)
         self.background_manager = BackgroundManager(self)
         self.MODULES = {
-            "ocr": {"threads": "ocr_threads", "stop_func": "ocr.stop_monitoring", "label": "文字识别"},
-            "timed": {"threads": "timed_threads", "stop_func": "timed.stop_tasks", "label": "定时功能"},
-            "number": {"threads": "number_threads", "stop_func": "number.stop_recognition", "label": "数字识别"},
-            "image": {"threads": "image_threads", "stop_func": "image.stop_detection", "label": "图像检测"},
-            "color": {"threads": "color_threads", "stop_func": "color.stop_recognition", "label": "颜色识别"},
-            "background": {"threads": "background_threads", "stop_func": "background.stop_monitoring", "label": "后台监控"},
-            "behavior_tree": {"threads": "behavior_tree_threads", "stop_func": "behavior_tree.stop", "label": "行为树"}
+            "ocr": {
+                "threads": "ocr_threads",
+                "stop_func": "ocr.stop_monitoring",
+                "start_func": "ocr.start_monitoring",
+                "label": "文字识别",
+                "object_path": "ocr"
+            },
+            "timed": {
+                "threads": "timed_threads",
+                "stop_func": "timed.stop_tasks",
+                "start_func": "timed_module.start_timed_tasks",
+                "label": "定时功能",
+                "object_path": "timed_module"
+            },
+            "number": {
+                "threads": "number_threads",
+                "stop_func": "number.stop_recognition",
+                "start_func": "number_module.start_number_recognition",
+                "label": "数字识别",
+                "object_path": "number_module"
+            },
+            "image": {
+                "threads": "image_threads",
+                "stop_func": "image.stop_detection",
+                "start_func": "image_detection_manager.start_all_detection",
+                "label": "图像检测",
+                "object_path": "image_detection_manager"
+            },
+            "script": {
+                "threads": "script_threads",
+                "stop_func": "script.stop",
+                "start_func": "script.start",
+                "label": "脚本执行",
+                "object_path": "script",
+                "stop_kwargs": {"stop_color_recognition": False}
+            },
+            "background": {
+                "threads": "background_threads",
+                "stop_func": "background.stop_monitoring",
+                "start_func": "background_manager.start_all_groups",
+                "label": "后台监控",
+                "object_path": "background_manager",
+                "optional": True
+            },
+            "behavior_tree": {
+                "threads": "behavior_tree_threads",
+                "stop_func": "behavior_tree.stop",
+                "start_func": "behavior_tree.start",
+                "label": "行为树",
+                "object_path": "behavior_tree",
+                "optional": True
+            }
         }
         self.module_controller = ModuleController(self)
 

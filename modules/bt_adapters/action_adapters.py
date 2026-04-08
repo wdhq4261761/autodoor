@@ -173,7 +173,7 @@ class MouseMoveNode(ActionNode):
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
         position = self.config.get("position")
         use_blackboard = self.config.get("use_blackboard", False)
-        position_key = self.config.get("position_key", "last_ocr_position")
+        position_key = self.config.get("position_key", "last_detection_position")
         relative = self.config.get("relative", False)
         smooth = self.config.get("smooth", True)
         move_type = self.config.get("move_type", "移动")
@@ -273,7 +273,7 @@ class MouseMoveNode(ActionNode):
             **self.config,
             "position": self.config.get("position"),
             "use_blackboard": self.config.get("use_blackboard", False),
-            "position_key": self.config.get("position_key", "last_ocr_position"),
+            "position_key": self.config.get("position_key", "last_detection_position"),
             "relative": self.config.get("relative", False),
             "smooth": self.config.get("smooth", True),
             "move_type": self.config.get("move_type", "移动"),
@@ -400,7 +400,6 @@ class SetVariableNode(ActionNode):
     def _execute_action(self, context: "ExecutionContext") -> NodeStatus:
         variable_name = self.config.get("variable_name", "")
         value = self.config.get("value")
-        value_type = self.config.get("value_type", "static")
         operation = self.config.get("operation", "set")
         
         if not variable_name:
@@ -436,7 +435,6 @@ class SetVariableNode(ActionNode):
             **self.config,
             "variable_name": self.config.get("variable_name", ""),
             "value": self.config.get("value"),
-            "value_type": self.config.get("value_type", "static"),
             "operation": self.config.get("operation", "set"),
         }
         return data

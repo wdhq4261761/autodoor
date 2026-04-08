@@ -95,6 +95,6 @@ class ImageConditionNode(ConditionNode):
             "template_path": self.config.get("template_path", ""),
             "threshold": self.config.get("threshold", 80),
             "save_position": self.config.get("save_position", True),
-            "position_key": self.config.get("position_key", "last_image_position"),
+            "position_key": self.config.get("position_key", "last_detection_position"),
         }
         return data

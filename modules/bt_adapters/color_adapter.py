@@ -94,6 +94,6 @@ class ColorConditionNode(ConditionNode):
             "tolerance": self.config.get("tolerance", 10),
             "min_pixels": self.config.get("min_pixels", 1),
             "save_position": self.config.get("save_position", True),
-            "position_key": self.config.get("position_key", "last_color_position"),
+            "position_key": self.config.get("position_key", "last_detection_position"),
         }
         return data

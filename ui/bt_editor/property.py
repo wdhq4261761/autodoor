@@ -18,7 +18,7 @@ NODE_CONFIG_SCHEMAS = {
     "OCRConditionNode": [
         {"key": "region", "label": "检测区域", "type": "region"},
         {"key": "keywords", "label": "关键词", "type": "text"},
-        {"key": "language", "label": "语言", "type": "select", "options": ["eng", "chi_sim", "jpn"]},
+        {"key": "language", "label": "语言", "type": "select", "options": ["eng", "chi_sim", "chi_tra"]},
     ],
     "ImageConditionNode": [
         {"key": "region", "label": "检测区域", "type": "region"},
