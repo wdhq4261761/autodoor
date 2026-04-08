@@ -149,7 +149,7 @@ class CompositeNode(Node):
         else:
             self.retry_count = max(0, retry_val)
         
-        self.repeat_count = self.config.get("repeat_count", 1)
+        self.repeat_count = self.config.get("repeat_count", 0)
         self.timeout_ms = self.config.get("timeout_ms", 0)
         self.child_interval = self.config.get("child_interval", 0)
         self.continue_on_failure = self.config.get("continue_on_failure", False)
@@ -482,8 +482,8 @@ class ActionNode(Node):
     
     def __init__(self, node_id: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(node_id, config)
-        repeat_val = self.config.get("repeat_count", 1)
-        self.repeat_count = repeat_val if repeat_val == -1 else max(1, repeat_val)
+        repeat_val = self.config.get("repeat_count", 0)
+        self.repeat_count = repeat_val if repeat_val == -1 else max(0, repeat_val)
         self.timeout_ms = self.config.get("timeout_ms", 0)
         self._current_repeat = 0
         self._start_time: Optional[float] = None

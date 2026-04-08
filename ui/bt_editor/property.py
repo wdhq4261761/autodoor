@@ -117,13 +117,13 @@ CONDITION_DECORATOR_FIELDS = [
 ]
 
 ACTION_DECORATOR_FIELDS = [
-    {"key": "repeat_count", "label": "重复次数(1不重复,-1无限)", "type": "number", "min": -1, "default": 1},
+    {"key": "repeat_count", "label": "重复次数(0不重复,-1无限)", "type": "number", "min": -1, "default": 0},
     {"key": "timeout_ms", "label": "超时时间(ms,0不限)", "type": "number", "min": 0, "default": 0},
 ]
 
 COMPOSITE_DECORATOR_FIELDS = [
     {"key": "retry_count", "label": "失败重试次数(-1无限)", "type": "number", "min": -1, "default": 0},
-    {"key": "repeat_count", "label": "重复次数(1不重复,-1无限)", "type": "number", "min": -1, "default": 1},
+    {"key": "repeat_count", "label": "重复次数(0不重复,-1无限)", "type": "number", "min": -1, "default": 0},
     {"key": "timeout_ms", "label": "超时时间(ms,0不限)", "type": "number", "min": 0, "default": 0},
 ]
 

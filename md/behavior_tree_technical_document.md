@@ -540,7 +540,7 @@ function abort_running_children(context, running_children):
     "enabled": true,                   # 是否启用
     "config": {                        # 配置参数
         "retry_count": 0,              # 重试次数
-        "repeat_count": 1,             # 重复次数
+        "repeat_count": 0,             # 重复次数
         "timeout_ms": 0                # 超时时间
     },
     "children": ["node_2", "node_3"],  # 子节点ID列表
@@ -1011,7 +1011,7 @@ def from_dict(cls, data: Dict[str, Any]) -> "Node":
 | name | string | "" | 节点名称 |
 | enabled | bool | true | 是否启用 |
 | retry_count | int | 0 | 失败重试次数 |
-| repeat_count | int | 1 | 重复次数（-1为无限） |
+| repeat_count | int | 0 | 重复次数（0不重复，-1无限） |
 | timeout_ms | int | 0 | 超时时间（毫秒，0不限） |
 | child_interval | int | 0 | 子节点执行间隔（毫秒） |
 | continue_on_failure | bool | false | 失败后是否继续执行后续节点 |
@@ -1600,7 +1600,7 @@ SUCCESS   │
 | key | string | "" | 按键名称 |
 | action | string | "press" | 动作类型 |
 | duration | int | 0 | 按住时长（毫秒） |
-| repeat_count | int | 1 | 重复次数 |
+| repeat_count | int | 0 | 重复次数（0不重复，-1无限） |
 | timeout_ms | int | 0 | 超时时间 |
 
 **动作类型**：
@@ -1651,7 +1651,7 @@ SUCCESS   │
 | position | tuple | null | 点击位置 (x,y) |
 | use_blackboard | bool | false | 点击最近检测点 |
 | position_key | string | "last_detection_position" | 黑板变量名 |
-| repeat_count | int | 1 | 重复次数 |
+| repeat_count | int | 0 | 重复次数（0不重复，-1无限） |
 | timeout_ms | int | 0 | 超时时间 |
 
 **动作类型说明**：
@@ -1726,7 +1726,7 @@ SUCCESS   │
 | position | tuple | null | 滚动位置 (x,y)，null则在当前位置滚动 |
 | use_blackboard | bool | false | 在最近检测点滚动 |
 | position_key | string | "last_detection_position" | 黑板变量名 |
-| repeat_count | int | 1 | 重复次数 |
+| repeat_count | int | 0 | 重复次数（0不重复，-1无限） |
 | timeout_ms | int | 0 | 超时时间 |
 
 **滚动量说明**：
@@ -1760,7 +1760,7 @@ SUCCESS   │
 | use_blackboard_end | bool | false | 使用黑板获取终点位置 |
 | position_key_end | string | "last_detection_position" | 终点位置黑板变量名 |
 | drag_duration | int | 500 | 拖拽持续时间（毫秒） |
-| repeat_count | int | 1 | 重复次数 |
+| repeat_count | int | 0 | 重复次数（0不重复，-1无限） |
 | timeout_ms | int | 0 | 超时时间 |
 
 **移动类型说明**：
@@ -1800,7 +1800,7 @@ SUCCESS   │
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | duration_ms | int | 1000 | 延时时长（毫秒） |
-| repeat_count | int | 1 | 重复次数 |
+| repeat_count | int | 0 | 重复次数（0不重复，-1无限） |
 
 ---
 
@@ -1815,7 +1815,7 @@ SUCCESS   │
 | variable_name | string | "" | 变量名 |
 | operation | string | "set" | 操作类型 |
 | value | any | - | 变量值 |
-| repeat_count | int | 1 | 重复次数 |
+| repeat_count | int | 0 | 重复次数（0不重复，-1无限） |
 
 **操作类型**：
 
@@ -1838,7 +1838,7 @@ SUCCESS   │
 |------|------|--------|------|
 | script_path | string | "" | 脚本文件路径 |
 | loop | bool | false | 循环执行 |
-| repeat_count | int | 1 | 重复次数 |
+| repeat_count | int | 0 | 重复次数（0不重复，-1无限） |
 | timeout_ms | int | 0 | 超时时间 |
 
 ---
@@ -1854,7 +1854,7 @@ SUCCESS   │
 | code_path | string | "" | 代码文件路径 |
 | code_type | string | "auto" | 代码类型 |
 | args | list | [] | 命令行参数 |
-| repeat_count | int | 1 | 重复次数 |
+| repeat_count | int | 0 | 重复次数（0不重复，-1无限） |
 | timeout_ms | int | 0 | 超时时间 |
 
 **代码类型**：
@@ -1875,7 +1875,7 @@ SUCCESS   │
 |------|------|--------|------|
 | sound_path | string | "" | 音频文件路径（留空使用全局默认） |
 | volume | int | null | 音量（0-100，留空使用全局音量） |
-| repeat_count | int | 1 | 播放次数 |
+| repeat_count | int | 0 | 播放次数（0不播放，-1无限循环） |
 | interval_ms | int | 0 | 播放间隔（毫秒） |
 | wait_complete | bool | true | 是否等待播放完成 |
 
@@ -1923,7 +1923,7 @@ OCR检测"完成" → 报警节点（异步播放）→ 发送按键"Ctrl+S"保�
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | retry_count | int | 0 | 失败后重试次数（-1无限重试，无上限） |
-| repeat_count | int | 1 | 整体重复次数（1不重复，-1无限） |
+| repeat_count | int | 0 | 整体重复次数（0不重复，-1无限） |
 | timeout_ms | int | 0 | 执行超时时间（毫秒，0不限） |
 
 **retry_count 执行次数说明**：
@@ -1989,7 +1989,7 @@ RUNNING  →  RUNNING
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
-| repeat_count | int | 重复次数（1不重复，-1无限） |
+| repeat_count | int | 重复次数（0不重复，-1无限） |
 | timeout_ms | int | 执行超时时间（毫秒，0不限） |
 
 ---
@@ -2048,15 +2048,15 @@ RUNNING  →  RUNNING
 
 **Q: 如何实现循环执行？**
 
-A: 设置组合节点的 `repeat_count` 为 -1 即可实现无限循环。
+A: 设置组合节点的 重试次数 为 -1 即可实现无限循环。
 
-**Q: 如何使用黑板传递数据？**
+**Q: 如何点击文字或图像位置？**
 
-A: 条件节点检测成功后可将位置保存到黑板，动作节点通过 `use_blackboard` 选项读取黑板位置。
+A: 条件节点检测成功后可将位置自动保存，点击和移动节点可使用点击最近检测点直接使用此位置。
 
 **Q: 节点执行失败如何处理？**
 
-A: 使用选择节点提供备选方案，或设置 `retry_count` 进行重试。
+A: 使用选择节点提供备选方案，或设置重试次数进行重试。
 
 **Q: 如何调试行为树？**
 
@@ -2095,16 +2095,3 @@ A: 确保修改属性后已保存（`Ctrl+S`），或切换选中节点时会自
 - **创建日期**: 2026-03-30
 - **更新日期**: 2026-04-08
 - **适用项目版本**: AutoDoor v3.0.6
-
-### 更新历史
-
-| 版本 | 日期 | 更新内容 |
-|------|------|----------|
-| 2.5 | 2026-04-08 | 新增：中文OCR预处理优化（图像放大、中值滤波、对比度增强2.5x、双锐化、二值化阈值130）；新增：繁体中文(chi_tra)支持，与简体中文使用相同预处理参数；新增：关键词识别多PSM模式支持（PSM 7/6/11自动尝试）；完善：OCR预处理流程图，区分中文预处理和标准预处理；新增：变量判断节点类型推断功能（_convert_compare_value方法）；修复：OCR节点to_dict中position_key默认值不一致问题；移除：未使用的value_type参数 |
-| 2.4 | 2026-04-06 | 新增：条件节点检测间隔参数(check_interval_ms)；完善：retry_count支持-1无限重试，移除上限限制；优化：ScriptNode线程池管理，添加竞态条件保护；完善：节点abort中止机制；更新：并行节点中止RUNNING子节点逻辑 |
-| 2.3 | 2026-04-06 | 新增：节点中止接口（abort方法）；完善：并行节点完成时中止RUNNING子节点的行为；新增：CodeNode/ScriptNode/MouseClickNode 中止逻辑实现；更新：并行节点算法伪代码 |
-| 2.2 | 2026-04-06 | 根据代码分析报告更新：统一黑板变量为 last_detection_position；补充空子节点行为说明；完善 retry_count/repeat_count 执行次数说明；补充并行节点缓存机制；补充无限循环子节点执行时机；新增 MouseScrollNode 滚轮节点；补充 MouseClickNode 多次点击参数；补充 MouseMoveNode 拖拽参数；补充 NumberConditionNode 预处理参数；补充 DelayNode 非阻塞特性说明 |
-| 2.1 | 2026-04-04 | 新增：顺序节点 `continue_on_failure` 参数，支持失败后继续执行后续节点 |
-| 2.0 | 2026-04-01 | 新增：子节点执行间隔、数字提取模式、鼠标点击动作类型和按住时长；优化：统一黑板变量、OCR/数字节点图像预处理、图像匹配阈值百分比格式 |
-| 1.2 | 2026-03-30 | 新增：节点串联执行说明、常见问题解答 |
-| 1.0 | 2026-03-28 | 初始版本 |

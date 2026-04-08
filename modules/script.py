@@ -589,11 +589,35 @@ class ScriptExecutor(RecorderBase):
                     self.recording_grace_period = False
                     return
                 
+                key_name = None
                 try:
-                    key_name = key.char
-                except AttributeError:
-                    key_name = key.name
-                except Exception:
+                    # 优先检查 char 属性（但需要排除控制字符）
+                    if hasattr(key, 'char') and key.char is not None:
+                        # 检查是否是控制字符（ASCII < 32 或 == 127）
+                        if isinstance(key.char, str) and len(key.char) == 1:
+                            char_code = ord(key.char)
+                            if char_code < 32 or char_code == 127:
+                                # 控制字符，使用 VK 映射
+                                if hasattr(key, 'vk') and key.vk is not None:
+                                    from input.vk_mapping import vk_to_char
+                                    key_name = vk_to_char(key.vk)
+                            else:
+                                # 可打印字符
+                                key_name = key.char
+                        else:
+                            key_name = key.char
+                    # 其次检查 name 属性（仅对 Key 枚举有效）
+                    if not key_name and hasattr(key, 'name') and key.name:
+                        key_name = key.name
+                    # 最后尝试使用 vk（虚拟键码）
+                    if not key_name and hasattr(key, 'vk') and key.vk is not None:
+                        from input.vk_mapping import vk_to_char
+                        key_name = vk_to_char(key.vk)
+                except Exception as e:
+                    self.app.logging_manager.log_message(f"[错误] 获取按键名称失败: {e}")
+                    return
+                
+                if not key_name:
                     return
                 
                 key_name = pynput_to_pyautogui_map.get(key_name, key_name)
@@ -623,11 +647,35 @@ class ScriptExecutor(RecorderBase):
                 if getattr(self, 'recording_grace_period', False):
                     return
                 
+                key_name = None
                 try:
-                    key_name = key.char
-                except AttributeError:
-                    key_name = key.name
-                except Exception:
+                    # 优先检查 char 属性（但需要排除控制字符）
+                    if hasattr(key, 'char') and key.char is not None:
+                        # 检查是否是控制字符（ASCII < 32 或 == 127）
+                        if isinstance(key.char, str) and len(key.char) == 1:
+                            char_code = ord(key.char)
+                            if char_code < 32 or char_code == 127:
+                                # 控制字符，使用 VK 映射
+                                if hasattr(key, 'vk') and key.vk is not None:
+                                    from input.vk_mapping import vk_to_char
+                                    key_name = vk_to_char(key.vk)
+                            else:
+                                # 可打印字符
+                                key_name = key.char
+                        else:
+                            key_name = key.char
+                    # 其次检查 name 属性（仅对 Key 枚举有效）
+                    if not key_name and hasattr(key, 'name') and key.name:
+                        key_name = key.name
+                    # 最后尝试使用 vk（虚拟键码）
+                    if not key_name and hasattr(key, 'vk') and key.vk is not None:
+                        from input.vk_mapping import vk_to_char
+                        key_name = vk_to_char(key.vk)
+                except Exception as e:
+                    self.app.logging_manager.log_message(f"[错误] 获取按键名称失败: {e}")
+                    return
+                
+                if not key_name:
                     return
                 
                 key_name = pynput_to_pyautogui_map.get(key_name, key_name)
