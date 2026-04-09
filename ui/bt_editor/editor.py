@@ -11,7 +11,8 @@ from tkinter import filedialog, messagebox
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from ui.theme import Theme
-from ui.bt_editor.canvas import BehaviorTreeCanvas, NodeExecutionStatus
+from ui.bt_editor.canvas import BehaviorTreeCanvas
+from ui.bt_editor.node_item import NodeExecutionStatus
 from ui.bt_editor.palette import NodePalette
 from ui.bt_editor.property import PropertyPanel
 from ui.bt_editor.toolbar import EditorToolbar

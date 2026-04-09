@@ -375,8 +375,13 @@ class RegionField(FieldWidget):
         self.btn.pack(side="right")
     
     def _start_selection(self):
+        import time
         try:
             import screeninfo
+            
+            self.app.root.iconify()
+            
+            time.sleep(0.2)
             
             monitors = screeninfo.get_monitors()
             min_x = min(monitor.x for monitor in monitors)
@@ -424,6 +429,7 @@ class RegionField(FieldWidget):
                 if abs(end_x_abs - start_x_abs[0]) < 10 or abs(end_y_abs - start_y_abs[0]) < 10:
                     messagebox.showwarning("警告", "选择的区域太小，请重新选择")
                     select_window.destroy()
+                    self.app.root.deiconify()
                     return
                 
                 region = (
@@ -437,9 +443,11 @@ class RegionField(FieldWidget):
                 self.on_change(self.key, list(region))
                 
                 select_window.destroy()
+                self.app.root.deiconify()
             
             def on_escape(e):
                 select_window.destroy()
+                self.app.root.deiconify()
             
             canvas.bind("<Button-1>", on_mouse_down)
             canvas.bind("<B1-Motion>", on_mouse_drag)
@@ -448,7 +456,11 @@ class RegionField(FieldWidget):
             select_window.focus_set()
             
         except ImportError:
+            self.app.root.deiconify()
             messagebox.showerror("错误", "screeninfo库未安装，无法支持区域选择。\n请运行 'pip install screeninfo' 安装该库。")
+        except Exception as e:
+            self.app.root.deiconify()
+            messagebox.showerror("错误", f"区域选择失败: {str(e)}")
     
     def set_value(self, value: Any):
         if isinstance(value, (list, tuple)) and len(value) == 4:
@@ -629,7 +641,6 @@ class ScreenshotField(FieldWidget):
     def _take_screenshot(self):
         """截图功能"""
         import os
-        import time
         from tkinter import messagebox
         
         try:
@@ -642,10 +653,6 @@ class ScreenshotField(FieldWidget):
             
             if not os.path.exists(image_dir):
                 os.makedirs(image_dir)
-            
-            self.app.root.iconify()
-            
-            time.sleep(0.2)
             
             from utils.region import _start_selection
             self.app._screenshot_callback = self._save_screenshot
@@ -687,7 +694,6 @@ class ScreenshotField(FieldWidget):
             screenshot = ScreenshotManager().get_region_screenshot(region)
             
             if not screenshot:
-                self.app.root.deiconify()
                 messagebox.showerror("错误", "无法获取截图区域")
                 return
             
@@ -701,12 +707,9 @@ class ScreenshotField(FieldWidget):
             self.var.set(filename)
             self.on_change(self.key, save_path)
             
-            self.app.root.deiconify()
-            
             messagebox.showinfo("成功", f"截图已保存到:\n{save_path}")
             
         except Exception as e:
-            self.app.root.deiconify()
             messagebox.showerror("错误", f"保存截图失败: {str(e)}")
     
     def set_value(self, value: Any):
@@ -886,8 +889,13 @@ class PositionField(FieldWidget):
             pass
     
     def _pick_position(self):
+        import time
         try:
             import screeninfo
+            
+            self.app.root.iconify()
+            
+            time.sleep(0.2)
             
             monitors = screeninfo.get_monitors()
             min_x = min(monitor.x for monitor in monitors)
@@ -916,16 +924,22 @@ class PositionField(FieldWidget):
                 self.var.set(f"{x}, {y}")
                 self.on_change(self.key, [x, y])
                 select_window.destroy()
+                self.app.root.deiconify()
             
             def on_escape(e):
                 select_window.destroy()
+                self.app.root.deiconify()
             
             select_window.bind("<Button-1>", on_click)
             select_window.bind("<Escape>", on_escape)
             select_window.focus_set()
             
         except ImportError:
+            self.app.root.deiconify()
             messagebox.showerror("错误", "screeninfo库未安装，无法支持位置选择。\n请运行 'pip install screeninfo' 安装该库。")
+        except Exception as e:
+            self.app.root.deiconify()
+            messagebox.showerror("错误", f"位置选择失败: {str(e)}")
     
     def set_value(self, value: Any):
         if isinstance(value, (list, tuple)) and len(value) >= 2:

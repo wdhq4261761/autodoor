@@ -85,3 +85,6 @@ autodoor_config.json
 
 # Git worktrees
 .worktrees/
+
+# behavior_tree
+/autodoor_behavior_tree/

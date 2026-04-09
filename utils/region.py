@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 import screeninfo
+import time
 
 
 def _start_selection(app, selection_type, region_index):
@@ -37,47 +38,51 @@ def _start_selection(app, selection_type, region_index):
     elif selection_type == "bg_crop":
         app._bg_crop_group_index = region_index
 
-    # 检查screeninfo库是否可用
     if screeninfo is None:
+        app.root.deiconify()
         messagebox.showerror("错误", "screeninfo库未安装，无法支持多显示器选择。请运行 'pip install screeninfo' 安装该库。")
         return
 
-    # 获取虚拟屏幕的尺寸（包含所有显示器）
-    monitors = screeninfo.get_monitors()
+    try:
+        app.root.iconify()
+        
+        time.sleep(0.2)
 
-    # 计算整个虚拟屏幕的边界
-    app.min_x = min(monitor.x for monitor in monitors)
-    app.min_y = min(monitor.y for monitor in monitors)
-    max_x = max(monitor.x + monitor.width for monitor in monitors)
-    max_y = max(monitor.y + monitor.height for monitor in monitors)
+        monitors = screeninfo.get_monitors()
 
-    # 创建透明的区域选择窗口，覆盖整个虚拟屏幕
-    app.select_window = tk.Toplevel(app.root)
-    app.select_window.geometry(f"{max_x - app.min_x}x{max_y - app.min_y}+{app.min_x}+{app.min_y}")
-    app.select_window.overrideredirect(True)  # 移除窗口装饰
-    app.select_window.attributes("-alpha", 0.3)
-    app.select_window.attributes("-topmost", True)
+        app.min_x = min(monitor.x for monitor in monitors)
+        app.min_y = min(monitor.y for monitor in monitors)
+        max_x = max(monitor.x + monitor.width for monitor in monitors)
+        max_y = max(monitor.y + monitor.height for monitor in monitors)
 
-    # 创建画布用于绘制选择框
-    app.canvas = tk.Canvas(app.select_window, cursor="cross", 
-                           width=max_x - app.min_x, height=max_y - app.min_y)
-    app.canvas.pack(fill=tk.BOTH, expand=True)
+        app.select_window = tk.Toplevel(app.root)
+        app.select_window.geometry(f"{max_x - app.min_x}x{max_y - app.min_y}+{app.min_x}+{app.min_y}")
+        app.select_window.overrideredirect(True)
+        app.select_window.attributes("-alpha", 0.3)
+        app.select_window.attributes("-topmost", True)
 
-    # 绑定鼠标事件
-    app.canvas.bind("<Button-1>", lambda event: on_mouse_down(app, event))
-    app.canvas.bind("<B1-Motion>", lambda event: on_mouse_drag(app, event))
+        app.canvas = tk.Canvas(app.select_window, cursor="cross", 
+                               width=max_x - app.min_x, height=max_y - app.min_y)
+        app.canvas.pack(fill=tk.BOTH, expand=True)
 
-    # 根据选择类型绑定不同的鼠标释放事件
-    if selection_type == "number":
-        app.canvas.bind("<ButtonRelease-1>", lambda event: on_number_region_mouse_up(app, event))
-    else:
-        app.canvas.bind("<ButtonRelease-1>", lambda event: on_mouse_up(app, event))
+        app.canvas.bind("<Button-1>", lambda event: on_mouse_down(app, event))
+        app.canvas.bind("<B1-Motion>", lambda event: on_mouse_drag(app, event))
 
-    app.select_window.protocol("WM_DELETE_WINDOW", lambda: cancel_selection(app))
+        if selection_type == "number":
+            app.canvas.bind("<ButtonRelease-1>", lambda event: on_number_region_mouse_up(app, event))
+        else:
+            app.canvas.bind("<ButtonRelease-1>", lambda event: on_mouse_up(app, event))
 
-    app.select_window.bind("<Escape>", lambda e: cancel_selection(app))
-    
-    app.select_window.focus_set()
+        app.select_window.protocol("WM_DELETE_WINDOW", lambda: cancel_selection(app))
+
+        app.select_window.bind("<Escape>", lambda e: cancel_selection(app))
+        
+        app.select_window.focus_set()
+        
+    except Exception as e:
+        app.root.deiconify()
+        app.is_selecting = False
+        messagebox.showerror("错误", f"区域选择失败: {str(e)}")
 
 def on_mouse_down(app, event):
     """鼠标按下事件"""
@@ -209,6 +214,7 @@ def cancel_selection(app):
     app.is_selecting = False
     if hasattr(app, 'select_window') and app.select_window.winfo_exists():
         app.select_window.destroy()
+    app.root.deiconify()
 
 
 def on_number_region_mouse_up(app, event):
