@@ -6,7 +6,7 @@
 
 ## 行为树独立项目仓库
 行为树是一种可视化的自动化流程设计工具。通过拖拽节点并连接它们，您可以创建复杂的自动化任务：
-<https://github.com/wdhq4261761/aotudoor_behavior_tree>
+<https://github.com/wdhq4261761/autodoor_behavior_tree>
 
 ***
 
