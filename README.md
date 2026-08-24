@@ -15,7 +15,7 @@
 
 <div align="center">
 
-![赞赏二维码](assets/appreciation.png)
+![赞赏二维码](appreciation.png)
 
 </div>
 
