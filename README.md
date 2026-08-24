@@ -9,6 +9,24 @@
 <https://github.com/wdhq4261761/autodoor_behavior_tree>
 
 ***
+## 💰 赞赏
+
+如果这款工具对你有所帮助，欢迎赞助以助力老王对它的长期维护。如果需要定制或者其他帮助，也可以联系作者。
+
+<div align="center">
+
+![赞赏二维码](assets/appreciation.png)
+
+</div>
+
+***
+
+## **联系作者**
+
+QQ群：298117299 进群密码：autodoor
+B站主页：<https://space.bilibili.com/263150759>
+
+***
 
 ## 功能特性
 
